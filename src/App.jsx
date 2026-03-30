@@ -11,7 +11,7 @@ import { PartnerSummary } from './components/PartnerSummary';
 import { ToastContainer } from './components/ToastContainer';
 import { LoadingScreen } from './components/LoadingScreen';
 import { requestNotificationPermission, sendLocalNotification } from './lib/notifications';
-import { User, MessageSquare, Settings, Zap, Heart, LogOut } from 'lucide-react';
+import { User, MessageSquare, Settings, Zap, Heart, LogOut, Lock } from 'lucide-react';
 import './App.css';
 
 const SIGNALS_MAP = {
@@ -82,6 +82,7 @@ function App() {
   }, []);
 
   const fetchProfile = async (userId) => {
+    if (!userId) { setLoading(false); return; }
     try {
       let { data: profile, error } = await supabase
         .from('profiles')
@@ -89,11 +90,10 @@ function App() {
         .eq('id', userId)
         .single();
       
-      const { data: { user } } = await supabase.auth.getUser();
-      const codeFromMeta = user?.user_metadata?.connection_code || Math.floor(100000 + Math.random() * 900000).toString();
-
       if (error && error.code === 'PGRST116') {
-        // Criar perfil se não existir
+        // Perfil não existe - criar um novo
+        const { data: { user } } = await supabase.auth.getUser();
+        const codeFromMeta = user?.user_metadata?.connection_code || Math.floor(100000 + Math.random() * 900000).toString();
         const { data: newProfile, error: insError } = await supabase
           .from('profiles')
           .insert({ id: userId, connection_code: codeFromMeta })
@@ -101,21 +101,25 @@ function App() {
           .single();
         if (insError) throw insError;
         profile = newProfile;
-      } else if (!profile.connection_code) {
-        // Atualizar perfil se existir mas não tiver código (da migração anterior)
-        const { data: updatedProfile, error: updError } = await supabase
+      } else if (error) {
+        // Outro erro da API - registrar mas não quebrar
+        console.error("Erro ao buscar perfil:", error);
+      } else if (profile && !profile.connection_code) {
+        // Perfil existe mas precisa de código de conexão
+        const { data: { user } } = await supabase.auth.getUser();
+        const codeFromMeta = user?.user_metadata?.connection_code || Math.floor(100000 + Math.random() * 900000).toString();
+        const { data: updatedProfile } = await supabase
           .from('profiles')
           .update({ connection_code: codeFromMeta })
           .eq('id', userId)
           .select()
           .single();
-        if (updError) throw updError;
-        profile = updatedProfile;
+        if (updatedProfile) profile = updatedProfile;
       }
 
-      setCurrentUser(profile);
+      if (profile) setCurrentUser(profile);
     } catch (err) {
-      console.error("Erro detalhado no perfil:", err);
+      console.error("Erro crítico no perfil:", err);
     } finally {
       setLoading(false);
     }
@@ -148,17 +152,26 @@ function App() {
       const lastMark = new Date(now);
       lastMark.setHours(now.getHours() < 12 ? 0 : 12, 0, 0, 0);
       
+      // Carregar signal_types PRIMEIRO para resolver labels dos sinais
+      const { data: stypes } = await supabase.from('signal_types')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (stypes) setSignalTypes(stypes);
+
       const { data: signals } = await supabase.from('signals')
         .select('*')
         .gte('created_at', lastMark.toISOString())
         .order('created_at', { ascending: false });
         
       if (signals) {
-        setSignalsHistory(signals.map(s => ({ 
-          label: s.status_id, // Usaremos o ID para mapear icones dinamicamente
-          timestamp: s.created_at, 
-          user_id: s.user_id 
-        })));
+        // Resolver label e color usando stypes e SIGNALS_MAP
+        setSignalsHistory(signals.map(s => {
+          const customType = stypes?.find(t => t.id === s.status_id);
+          const mapped = SIGNALS_MAP[s.status_id];
+          const label = customType?.label || mapped?.label || s.status_id;
+          const color = customType?.color || mapped?.color || 'var(--color-primary)';
+          return { label, color, timestamp: s.created_at, user_id: s.user_id };
+        }));
         const lPart = signals.find(s => s.user_id === partnerId);
         if (lPart) setPartnerSignal(lPart.status_id);
       }
@@ -166,16 +179,7 @@ function App() {
       const { data: convs } = await supabase.from('conversations')
         .select('*')
         .order('created_at', { ascending: false });
-      
-      // Se não houver conversas, mas houver mensagens, garantimos o "BATE PAPO"
-      if (convs) {
-        setConversations(convs);
-      }
-
-      const { data: stypes } = await supabase.from('signal_types')
-        .select('*')
-        .order('created_at', { ascending: true });
-      if (stypes) setSignalTypes(stypes);
+      if (convs) setConversations(convs);
 
       const { data: msgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(20);
       if (msgs) setMessages(msgs.reverse());
