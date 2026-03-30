@@ -185,16 +185,43 @@ function App() {
 
     const channel = supabase.channel('realtime-nossos-sinais')
       .on('postgres_changes', { event: 'INSERT', table: 'signals' }, (p) => {
+        // Resolver label e color de qualquer tipo de sinal (padrão ou customizado)
+        const resolveSignal = (statusId) => {
+          // 1. Tentar no mapa fixo primeiro
+          if (SIGNALS_MAP[statusId]) return SIGNALS_MAP[statusId];
+          // 2. Buscar nos signalTypes customizados (usar setSignalTypes via closure não funciona aqui,
+          //    então usamos um ref ou relemos do estado via functional update)
+          return { label: statusId, color: 'var(--color-primary)' };
+        };
+
         if (p.new.user_id === partnerId) {
           setPartnerSignal(p.new.status_id);
-          const label = SIGNALS_MAP[p.new.status_id]?.label;
-          const partnerName = partnerUser?.nickname || partnerUser?.name || 'Seu Amor';
-          sendLocalNotification(`Sinal de ${partnerName}`, `Novo estado: ${label}`);
-          addToast(`Sinal de ${partnerName}`, `Seu amor está: ${label}`, '🍃');
+          // Resolver o nome do sinal usando signalTypes atual (via estado funcional)
+          setSignalTypes(currentTypes => {
+            const customType = currentTypes.find(t => t.id === p.new.status_id);
+            const signalLabel = customType?.label || SIGNALS_MAP[p.new.status_id]?.label || p.new.status_id;
+            const partnerName = partnerUser?.nickname || partnerUser?.name || 'Seu Amor';
+            sendLocalNotification(`Sinal de ${partnerName}`, `Novo estado: ${signalLabel}`);
+            addToast(`Sinal de ${partnerName}`, `Seu amor está: ${signalLabel}`, '🍃');
+            return currentTypes; // não altera o estado
+          });
         } else if (p.new.user_id === currentUser.id) {
           setMySignal(p.new.status_id);
         }
-        setSignalsHistory(prev => [{ ...SIGNALS_MAP[p.new.status_id], timestamp: p.new.created_at, user_id: p.new.user_id }, ...prev].slice(0, 20));
+
+        // Adicionar ao histórico com label e color resolvidos de signalTypes ou SIGNALS_MAP
+        setSignalTypes(currentTypes => {
+          const customType = currentTypes.find(t => t.id === p.new.status_id);
+          const resolved = customType
+            ? { label: customType.label, color: customType.color }
+            : (SIGNALS_MAP[p.new.status_id] || { label: p.new.status_id, color: 'var(--color-primary)' });
+
+          setSignalsHistory(prev => [
+            { ...resolved, timestamp: p.new.created_at, user_id: p.new.user_id },
+            ...prev
+          ].slice(0, 20));
+          return currentTypes; // não altera signalTypes
+        });
       })
       .on('postgres_changes', { event: 'INSERT', table: 'messages' }, (p) => {
         setMessages(prev => [...prev, p.new]);
@@ -403,7 +430,7 @@ function App() {
     }
   };
 
-  // 19.5: Biometria nativa
+  // 19.5: Biometria nativa (WebAuthn corrigido - V19.7)
   const handlePairBiometrics = async () => {
     try {
       if (!window.isSecureContext || !window.PublicKeyCredential) {
@@ -411,49 +438,71 @@ function App() {
         return;
       }
 
-      const challenge = new Uint8Array(32);
-      window.crypto.getRandomValues(challenge);
-      const userId = new Uint8Array(16);
-      window.crypto.getRandomValues(userId);
+      const challenge = window.crypto.getRandomValues(new Uint8Array(32));
+      // userId fixo derivado do ID do perfil (para reutilizar entre sessões)
+      const userIdStr = currentUser?.id || 'default';
+      const userId = new TextEncoder().encode(userIdStr.slice(0, 16).padEnd(16, '0'));
 
       const credential = await navigator.credentials.create({
         publicKey: {
           challenge,
-          rp: { name: "Nossos Sinais" },
+          rp: { id: window.location.hostname, name: "Nossos Sinais" },
           user: {
             id: userId,
             name: currentUser?.name || "usuario",
             displayName: currentUser?.nickname || "Amor"
           },
-          pubKeyCredParams: [{ alg: -7, type: "public-key" }],
-          authenticatorSelection: { authenticatorAttachment: "platform" },
+          pubKeyCredParams: [{ alg: -7, type: "public-key" }, { alg: -257, type: "public-key" }],
+          authenticatorSelection: {
+            authenticatorAttachment: "platform",
+            userVerification: "required",
+            residentKey: "preferred"
+          },
           timeout: 60000
         }
       });
 
       if (credential) {
+        // CRUCIAL: salvar o ID da chave para usar na autenticação
+        const rawId = new Uint8Array(credential.rawId);
+        const base64Id = btoa(String.fromCharCode(...rawId));
         localStorage.setItem('biometric_paired', 'true');
-        alert("Biometria vinculada com sucesso! 🎉");
+        localStorage.setItem('biometric_credential_id', base64Id);
+        alert("Biometria vinculada! 🎉 Da próxima vez use a digital na tela de bloqueio.");
       }
     } catch (err) {
       console.error(err);
-      if (err.name !== 'NotAllowedError') alert("Erro ao vincular biometria.");
+      if (err.name === 'InvalidStateError') {
+        // Já registrado neste dispositivo
+        localStorage.setItem('biometric_paired', 'true');
+        alert("Biometria já estava configurada neste dispositivo! 👍");
+      } else if (err.name !== 'NotAllowedError') {
+        alert("Erro ao vincular biometria: " + err.message);
+      }
     }
   };
 
   const handleBiometricUnlock = async () => {
     try {
       const isPaired = localStorage.getItem('biometric_paired') === 'true';
-      if (!isPaired) return false;
+      if (!isPaired || !window.isSecureContext || !window.PublicKeyCredential) return false;
 
-      const challenge = new Uint8Array(32);
-      window.crypto.getRandomValues(challenge);
+      const challenge = window.crypto.getRandomValues(new Uint8Array(32));
+      
+      // Recuperar o credentialId salvo no registro
+      const base64Id = localStorage.getItem('biometric_credential_id');
+      const allowCredentials = base64Id ? [{
+        type: "public-key",
+        id: Uint8Array.from(atob(base64Id), c => c.charCodeAt(0)).buffer,
+        transports: ["internal"]
+      }] : [];
 
       const assertion = await navigator.credentials.get({
         publicKey: {
           challenge,
           timeout: 60000,
-          userVerification: "required"
+          userVerification: "required",
+          allowCredentials
         }
       });
 

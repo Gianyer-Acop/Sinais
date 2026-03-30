@@ -1,10 +1,9 @@
-// Notification Handler for Nossos Sinais
+// Notification Handler for Nossos Sinais (V19.7 - Mobile Fix)
+
 export const requestNotificationPermission = async () => {
   if (!("Notification" in window)) {
-    console.log("Este navegador não suporta notificações de desktop");
     return "unsupported";
   }
-
   try {
     const permission = await Notification.requestPermission();
     return permission;
@@ -14,32 +13,65 @@ export const requestNotificationPermission = async () => {
   }
 };
 
-export const sendLocalNotification = (title, body) => {
-  if (Notification.permission === "granted") {
+/**
+ * Envia notificação via Service Worker (funciona no mobile/PWA)
+ * Fallback para new Notification() se SW não estiver disponível
+ */
+export const sendLocalNotification = async (title, body) => {
+  if (Notification.permission !== "granted") return;
+
+  // Mobile (PWA): usar Service Worker para exibir a notificação
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification(title, {
+        body,
+        icon: '/nosso_mascote_final.png',
+        badge: '/nosso_mascote_final.png',
+        vibrate: [200, 100, 200],
+        requireInteraction: false,
+        silent: false,
+        tag: 'nossos-sinais-update', // evita spam de notificações empilhadas
+        renotify: true
+      });
+      playSoftSound();
+      return;
+    } catch (err) {
+      console.warn("Falha ao usar SW para notificação, tentando fallback:", err);
+    }
+  }
+
+  // Desktop / Fallback
+  try {
     new Notification(title, {
       body,
-      icon: '/pwa-192x192.png',
-      silent: true // We'll play our own soft sound
+      icon: '/nosso_mascote_final.png',
+      silent: true
     });
     playSoftSound();
+  } catch (err) {
+    console.warn("Não foi possível exibir notificação:", err);
   }
 };
 
 const playSoftSound = () => {
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const oscillator = audioCtx.createOscillator();
-  const gainNode = audioCtx.createGain();
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
 
-  oscillator.type = 'sine';
-  oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // A4
-  oscillator.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.5); // A5
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(523, audioCtx.currentTime); // C5
+    oscillator.frequency.exponentialRampToValueAtTime(784, audioCtx.currentTime + 0.3); // G5
 
-  gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+    gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
 
-  oscillator.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
-
-  oscillator.start();
-  oscillator.stop(audioCtx.currentTime + 0.5);
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 0.4);
+  } catch (e) {
+    // Silencioso - contexto de áudio pode não estar disponível
+  }
 };

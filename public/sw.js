@@ -1,5 +1,5 @@
-// Basic Service Worker for PWA - Nossos Sinais
-const CACHE_NAME = 'nossos-sinais-v1';
+// Service Worker - Nossos Sinais (V19.7)
+const CACHE_NAME = 'nossos-sinais-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -9,21 +9,28 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// Estratégia: Network First (sempre tenta buscar do servidor)
 self.addEventListener('fetch', (event) => {
-  // Pass-through strategy - apenas para permitir funcionamento offline básico
-  event.respondWith(fetch(event.request));
+  // Ignora requisições não-GET e do Supabase/API
+  if (event.request.method !== 'GET' || event.request.url.includes('supabase')) {
+    return;
+  }
+  event.respondWith(
+    fetch(event.request).catch(() => caches.match(event.request))
+  );
 });
 
-// Listener para Push (Futuro)
-self.addEventListener('push', (event) => {
-  const data = event.data?.json() || { title: 'Nossos Sinais', body: 'Alguém está pensando em você! ❤️' };
-  
-  const options = {
-    body: data.body,
-    icon: '/nosso_mascote_final.png',
-    badge: '/nosso_mascote_final.png',
-    vibrate: [200, 100, 200]
-  };
-
-  event.waitUntil(self.registration.showNotification(data.title, options));
+// Notificações via Push (enviadas pelo showNotification do app principal)
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Se o app já está aberto, focar nele
+      for (const client of clientList) {
+        if ('focus' in client) return client.focus();
+      }
+      // Senão, abrir uma nova aba
+      if (clients.openWindow) return clients.openWindow('/');
+    })
+  );
 });
