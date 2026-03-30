@@ -1,0 +1,9 @@
+@echo off
+echo Iniciando o Nossos Sinais localmente...
+if not exist node_modules (
+    echo Instalando dependencias...
+    call npm install
+)
+echo Abrindo o servidor de desenvolvimento...
+npm run dev
+pause

@@ -7,12 +7,27 @@ export function LockScreen({ onUnlock }) {
   const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
 
   useEffect(() => {
-    // Check if biometrics are supported in this browser
     if (window.PublicKeyCredential) {
       PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-        .then(available => setIsBiometricAvailable(available));
+        .then(available => {
+          setIsBiometricAvailable(available);
+          // Removido o desbloqueio automático para evitar bypass de segurança
+        });
     }
   }, []);
+
+  const handleBiometricUnlock = async () => {
+    try {
+      // Nota: Em modo PWA/Mobile, o prompt de biometria real exige HTTPS e WebAuthn.
+      // Por segurança, exigimos o PIN caso a biometria não dispare corretamente.
+      if (window.PublicKeyCredential && isBiometricAvailable) {
+        // Aqui o app tentaria o WebAuthn real. Para esta versão, mantemos o foco no PIN.
+        alert("Para usar a biometria nativa, o app precisa estar instalado e em ambiente seguro (HTTPS). Use seu PIN por enquanto.");
+      }
+    } catch (err) {
+      console.error("Erro na biometria:", err);
+    }
+  };
 
   const handlePinInput = (value) => {
     if (pin.length < 4) {
@@ -20,7 +35,6 @@ export function LockScreen({ onUnlock }) {
       setPin(newPin);
       
       if (newPin.length === 4) {
-        // Mock PIN check (In real app, compare with hashed PIN in localStorage/DB)
         const savedPin = localStorage.getItem('app_pin') || '1234';
         if (newPin === savedPin) {
           onUnlock();
@@ -35,52 +49,80 @@ export function LockScreen({ onUnlock }) {
     }
   };
 
-  const handleBiometric = async () => {
-    // Basic mock of triggering biometrics. 
-    // Real implementation would use navigator.credentials.get()
-    try {
-      // Small delay to simulate system prompt
-      await new Promise(r => setTimeout(r, 500));
-      onUnlock();
-    } catch (e) {
-      console.error("Biometric failed", e);
-    }
-  };
-
   return (
-    <div className="lock-screen">
-      <div className="lock-content">
-        <div className="lock-icon-wrapper">
-          <Lock size={48} color="var(--color-primary)" />
+    <div className="lock-screen-calm">
+      <div className="lock-content-minimal">
+        <div className="lock-header-minimal">
+          <div className="lock-icon-minimal">
+            <Lock size={32} color="var(--color-primary)" />
+          </div>
+          <h2>Área Protegida</h2>
+          <p>O cantinho nosso está seguro.</p>
         </div>
-        <h2>Acesso Protegido</h2>
-        <p>Digite seu PIN para entrar no Nossos Sinais</p>
 
-        <div className={`pin-display ${error ? 'error' : ''}`}>
+        <div className={`pin-dots-calm ${error ? 'shake-calm' : ''}`}>
           {[0, 1, 2, 3].map(i => (
-            <div key={i} className={`pin-dot ${pin.length > i ? 'filled' : ''}`} />
+            <div key={i} className={`p-dot-calm ${pin.length > i ? 'active' : ''} ${error ? 'error' : ''}`} />
           ))}
         </div>
 
-        <div className="pin-pad">
+        <div className="pin-pad-minimal">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-            <button key={num} onClick={() => handlePinInput(num.toString())}>
+            <button key={num} className="pin-num-btn" onClick={() => handlePinInput(num.toString())}>
               {num}
             </button>
           ))}
-          <button className="biometric-btn" onClick={handleBiometric} disabled={!isBiometricAvailable}>
-            <Fingerprint size={24} />
+          <button className="pin-num-btn-aux" onClick={() => setPin('')}>Limpar</button>
+          <button className="pin-num-btn" onClick={() => handlePinInput('0')}>0</button>
+          <button 
+            className={`pin-num-btn-aux ${isBiometricAvailable ? 'active' : ''}`}
+            onClick={handleBiometricUnlock}
+            title="Usar Biometria"
+          >
+            <Fingerprint size={24} color={isBiometricAvailable ? 'var(--color-primary)' : '#ccc'} />
           </button>
-          <button onClick={() => handlePinInput('0')}>0</button>
-          <button onClick={() => setPin('')}>C</button>
         </div>
-        
-        {isBiometricAvailable && (
-          <button className="quick-unlock" onClick={handleBiometric}>
-            <ShieldCheck size={16} /> Toque para biometria
-          </button>
-        )}
       </div>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        .lock-screen-calm {
+          background-color: var(--bg-primary); height: 100%;
+          display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .lock-content-minimal {
+          width: 100%; max-width: 320px; text-align: center;
+        }
+        .lock-icon-minimal {
+          width: 80px; height: 80px; background: #fff; border-radius: 24px;
+          display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;
+          border: 1px solid var(--color-accent);
+        }
+        .lock-header-minimal h2 { font-size: 1.4rem; color: var(--text-primary); font-weight: 800; margin-bottom: 4px; }
+        .lock-header-minimal p { color: var(--color-secondary); font-size: 0.9rem; font-weight: 600; }
+        
+        .pin-dots-calm { display: flex; justify-content: center; gap: 16px; margin: 40px 0; }
+        .p-dot-calm { width: 14px; height: 14px; border-radius: 50%; background: var(--color-accent); transition: all 0.2s; }
+        .p-dot-calm.active { background: var(--color-primary); transform: scale(1.2); }
+        .p-dot-calm.error { background: #b56576; }
+        
+        .pin-pad-minimal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+        .pin-num-btn {
+          height: 64px; border-radius: 16px; border: 1px solid #e5e5d1; background: #fff;
+          font-size: 1.4rem; font-weight: 700; color: var(--text-primary); cursor: pointer; transition: all 0.2s;
+        }
+        .pin-num-btn:active { background: var(--bg-primary); transform: scale(0.95); }
+        .pin-num-btn-aux {
+          background: none; border: none; color: var(--color-primary); font-weight: 700; font-size: 0.85rem; cursor: pointer;
+        }
+        
+        .shake-calm { animation: shake-calm 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake-calm {
+          10%, 90% { transform: translate3d(-1px, 0, 0); }
+          20%, 80% { transform: translate3d(2px, 0, 0); }
+          30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+          40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+      `}} />
     </div>
   );
 }

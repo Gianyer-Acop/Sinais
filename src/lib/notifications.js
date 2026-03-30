@@ -1,13 +1,16 @@
 // Notification Handler for Nossos Sinais
 export const requestNotificationPermission = async () => {
   if (!("Notification" in window)) {
-    console.log("This browser does not support desktop notification");
-    return;
+    console.log("Este navegador não suporta notificações de desktop");
+    return "unsupported";
   }
 
-  if (Notification.permission !== "granted") {
-    await Notification.permission;
-    await Notification.requestPermission();
+  try {
+    const permission = await Notification.requestPermission();
+    return permission;
+  } catch (err) {
+    console.error("Erro ao solicitar permissão:", err);
+    return "denied";
   }
 };
 

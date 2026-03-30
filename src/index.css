@@ -1,16 +1,42 @@
 :root {
-  --bg-primary: #F0F4F8; /* Soft ice blue to avoid white glare */
-  --text-primary: #2D3748; /* Deep blue-grey for soft contrast */
-  --text-secondary: #4A5568;
-  --color-primary: #7DA1C4; /* Calming blue */
-  --color-primary-dark: #5A82A8;
-  --color-secondary: #A5B8D1; /* Muted blue for secondary states */
-  --color-accent: #CADEED; /* Light accent blue */
-  --color-safe: #94A596; /* Muted green for 'I'm okay' */
-  --color-warning: #BCC7D4; /* Soft grey-blue for warnings */
-  --shadow-soft: 0 4px 12px rgba(45, 55, 72, 0.08);
-  --border-radius: 16px; /* Generous rounding for softness */
-  --transition-speed: 0.3s;
+  /* Default (Sage/Green) */
+  --bg-primary: #f7f7f2;
+  --bg-secondary: #ffffff;
+  --text-primary: #334148;
+  --text-secondary: #52616a;
+  --color-primary: #52796f; 
+  --color-secondary: #84a98c;
+  --color-accent: #cad2c5;
+  --color-safe: #5e8c61;
+  --color-warning: #a68a64;
+  --color-critical: #b56576;
+  --shadow-soft: 0 4px 15px rgba(0, 0, 0, 0.05);
+  --border-radius: 20px;
+  --transition-speed: 0.4s;
+}
+
+body.theme-blue {
+  --bg-primary: #f0f7f9;
+  --color-primary: #4a7c92;
+  --color-secondary: #7ba8bc;
+  --color-accent: #d0e1e9;
+  --text-primary: #2c3e50;
+}
+
+body.theme-brown {
+  --bg-primary: #f9f5f0;
+  --color-primary: #8c7355;
+  --color-secondary: #b8a085;
+  --color-accent: #e5ddd1;
+  --text-primary: #4a3c2c;
+}
+
+body.theme-yellow {
+  --bg-primary: #fdfaf0;
+  --color-primary: #96834d;
+  --color-secondary: #c9b067;
+  --color-accent: #e9dec0;
+  --text-primary: #4a452c;
 }
 
 * {
@@ -18,6 +44,11 @@
   margin: 0;
   padding: 0;
   -webkit-tap-highlight-color: transparent; /* Mobile accessibility */
+  transition: background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1), 
+              color 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              fill 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              stroke 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 body {
@@ -27,16 +58,22 @@ body {
   line-height: 1.5;
   display: flex;
   justify-content: center;
-  min-height: 100vh;
-  padding: 1rem;
-  overflow-x: hidden;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  transition: background-color 0.6s cubic-bezier(0.4, 0, 0.2, 1), 
+              color 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 #root {
   width: 100%;
-  max-width: 500px; /* Focus on mobile-first and narrow view */
+  max-width: 500px;
+  height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 button {
