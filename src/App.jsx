@@ -10,6 +10,7 @@ import { ProfileSetupScreen } from './components/ProfileSetupScreen';
 import { PartnerSummary } from './components/PartnerSummary';
 import { ToastContainer } from './components/ToastContainer';
 import { LoadingScreen } from './components/LoadingScreen';
+import { WelcomeTour } from './components/WelcomeTour';
 import { requestNotificationPermission, sendLocalNotification } from './lib/notifications';
 import { User, MessageSquare, Settings, Zap, Heart, LogOut, Lock } from 'lucide-react';
 import './App.css';
@@ -36,6 +37,7 @@ function App() {
   const [isLocked, setIsLocked] = useState(localStorage.getItem('app_lock_enabled') === 'true');
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState([]);
+  const [showTour, setShowTour] = useState(false);
 
   // 0. Aplicar Tema IMEDIATAMENTE (LocalStorage)
   useEffect(() => {
@@ -117,7 +119,13 @@ function App() {
         if (updatedProfile) profile = updatedProfile;
       }
 
-      if (profile) setCurrentUser(profile);
+      if (profile) {
+        setCurrentUser(profile);
+        // Mostrar tour apenas na primeira vez (após ter parceiro vinculado)
+        if (!localStorage.getItem('tour_completed') && profile.partner_id) {
+          setShowTour(true);
+        }
+      }
     } catch (err) {
       console.error("Erro crítico no perfil:", err);
     } finally {
@@ -533,20 +541,15 @@ function App() {
   // Roteamento de Onboarding
   if (!currentUser) return <LoadingScreen />;
   
-  // 1. Configuração Inicial (Se não tiver nome)
+  // 1. Novo usuário sem nome → ir para profile (sem travar o app)
+  // Fazemos isso setando a aba automaticamente, mas não bloqueamos a renderização
+  // A aba 'perfil' terá o ProfileSetupScreen integrado
   if (!currentUser.name) {
-    return <ProfileSetupScreen onSave={handleSaveProfile} />;
+    return <ProfileSetupScreen onSave={async (data) => { await handleSaveProfile(data); setActiveTab('partner'); }} />;
   }
 
-  // 2. Vínculo de Parceiro (Se não tiver parceiro vinculado)
-  if (!currentUser.partner_id) {
-    return <ConnectionScreen userProfile={currentUser} onComplete={() => fetchProfile(currentUser.id)} />;
-  }
-
-  // 3. Aguardar dados do parceiro (Usa tela carinhosa)
-  if (!partnerUser) {
-    return <LoadingScreen />;
-  }
+  // 2. Sem parceiro vinculado → app abre normalmente, Vida mostra painel de vínculo
+  // (Sem tela bloqueante)
 
   return (
     <div className="app-container">
@@ -616,7 +619,9 @@ function App() {
             <PartnerSummary 
               partner={partnerUser} 
               signals={signalsHistory.filter(s => s.user_id === currentUser?.partner_id)} 
-              onNudge={handleNudge} 
+              onNudge={handleNudge}
+              userProfile={currentUser}
+              onComplete={() => fetchProfile(currentUser.id)}
             />
           </div>
         )}
@@ -630,6 +635,14 @@ function App() {
       </nav>
 
       <ToastContainer toasts={toasts} removeToast={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
+
+      {showTour && (
+        <WelcomeTour
+          onFinish={() => setShowTour(false)}
+          onTabChange={(tab) => setActiveTab(tab)}
+          hasPartner={!!currentUser?.partner_id}
+        />
+      )}
 
       <style dangerouslySetInnerHTML={{ __html: `
         .loading-modern { height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg-primary); color: var(--color-primary); font-weight: 700; }

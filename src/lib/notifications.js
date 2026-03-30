@@ -1,56 +1,63 @@
-// Notification Handler for Nossos Sinais (V19.7 - Mobile Fix)
+// Notification Handler - Nossos Sinais (V20.4 - Android Fix)
 
 export const requestNotificationPermission = async () => {
-  if (!("Notification" in window)) {
-    return "unsupported";
-  }
+  if (!('Notification' in window)) return 'unsupported';
+  if (Notification.permission === 'granted') return 'granted';
+  if (Notification.permission === 'denied') return 'denied';
+
   try {
     const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      // Teste imediato para confirmar que funciona
+      await sendLocalNotification('Nossos Sinais 🦦', 'Notificações ativadas! Você não vai perder nenhum sinal.');
+    }
     return permission;
   } catch (err) {
-    console.error("Erro ao solicitar permissão:", err);
-    return "denied";
+    console.error('Erro ao solicitar permissão:', err);
+    return 'denied';
   }
 };
 
 /**
- * Envia notificação via Service Worker (funciona no mobile/PWA)
- * Fallback para new Notification() se SW não estiver disponível
+ * Envia notificação de sistema via Service Worker.
+ * No Android PWA, SEMPRE usa SW (não new Notification()).
+ * Usa navigator.serviceWorker.ready (aguarda o SW ficar ativo).
  */
 export const sendLocalNotification = async (title, body) => {
-  if (Notification.permission !== "granted") return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
-  // Mobile (PWA): usar Service Worker para exibir a notificação
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+  // Estratégia 1: Service Worker Ready (principal — funciona no Android PWA)
+  if ('serviceWorker' in navigator) {
     try {
       const registration = await navigator.serviceWorker.ready;
-      await registration.showNotification(title, {
-        body,
-        icon: '/nosso_mascote_final.png',
-        badge: '/nosso_mascote_final.png',
-        vibrate: [200, 100, 200],
-        requireInteraction: false,
-        silent: false,
-        tag: 'nossos-sinais-update', // evita spam de notificações empilhadas
-        renotify: true
-      });
-      playSoftSound();
-      return;
+      if (registration && registration.showNotification) {
+        await registration.showNotification(title, {
+          body,
+          icon: '/nosso_mascote_final.png',
+          badge: '/nosso_mascote_final.png',
+          vibrate: [200, 100, 200],
+          tag: 'nossos-sinais-update',
+          renotify: true,
+          requireInteraction: false,
+        });
+        playSoftSound();
+        return;
+      }
     } catch (err) {
-      console.warn("Falha ao usar SW para notificação, tentando fallback:", err);
+      console.warn('SW notification falhou, usando fallback:', err);
     }
   }
 
-  // Desktop / Fallback
+  // Estratégia 2: Fallback desktop
   try {
     new Notification(title, {
       body,
       icon: '/nosso_mascote_final.png',
-      silent: true
+      silent: true,
     });
     playSoftSound();
   } catch (err) {
-    console.warn("Não foi possível exibir notificação:", err);
+    console.warn('Notificação fallback falhou:', err);
   }
 };
 
@@ -59,19 +66,14 @@ const playSoftSound = () => {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
-
     oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(523, audioCtx.currentTime); // C5
-    oscillator.frequency.exponentialRampToValueAtTime(784, audioCtx.currentTime + 0.3); // G5
-
+    oscillator.frequency.setValueAtTime(523, audioCtx.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(784, audioCtx.currentTime + 0.3);
     gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
-
     oscillator.connect(gainNode);
     gainNode.connect(audioCtx.destination);
     oscillator.start();
     oscillator.stop(audioCtx.currentTime + 0.4);
-  } catch (e) {
-    // Silencioso - contexto de áudio pode não estar disponível
-  }
+  } catch (e) { /* silencioso */ }
 };

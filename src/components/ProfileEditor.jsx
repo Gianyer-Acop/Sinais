@@ -110,7 +110,7 @@ export function ProfileEditor({
         <div className="section-title-calm">
            <LayoutGrid size={18} /> <span>Personalização de Sinais</span>
         </div>
-        <div className="manage-signals-card" onClick={() => setShowSignalManager(true)}>
+        <div className="manage-signals-card" id="tour-signal-editor" onClick={() => setShowSignalManager(true)}>
            <div className="manage-icon">✨</div>
            <div className="manage-text">
               <strong>Personalizar Botões de Sinais</strong>
