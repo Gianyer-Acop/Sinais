@@ -248,6 +248,7 @@ function App() {
   }, [currentUser]);
 
   const handleUnlock = () => { setIsLocked(false); localStorage.setItem('last_unlock', Date.now().toString()); };
+  const handleLock = () => { setIsLocked(true); };
   const handleLogout = async () => { await supabase.auth.signOut(); localStorage.removeItem('last_unlock'); setIsLocked(true); };
 
   const handleSignalSelect = async (statusId) => {
@@ -548,7 +549,15 @@ function App() {
       <header className="app-header">
         <h1>Nossos Sinais</h1>
         <div className="header-actions">
-           <img src="/nosso_mascote_final.png" alt="Logo" style={{ width: '42px', height: '42px', objectFit: 'contain' }} />
+          <button
+            className="lock-btn-header"
+            onClick={handleLock}
+            title="Bloquear app"
+            aria-label="Bloquear"
+          >
+            <Lock size={18} />
+          </button>
+          <img src="/nosso_mascote_final.png" alt="Logo" style={{ width: '42px', height: '42px', objectFit: 'contain' }} />
         </div>
       </header>
 
