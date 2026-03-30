@@ -1,0 +1,21 @@
+{
+  "short_name": "Nossos Sinais",
+  "name": "Nossos Sinais - Conexão e Afeto",
+  "icons": [
+    {
+      "src": "nosso_mascote_final.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "nosso_mascote_final.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#84a98c",
+  "background_color": "#ffffff"
+}

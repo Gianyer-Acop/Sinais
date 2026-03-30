@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Camera, Check, Shield, Lock, LayoutGrid, Bell, Settings as SettingsIcon } from 'lucide-react';
+import { Save, Camera, Check, Shield, Lock, LayoutGrid, Bell, Settings as SettingsIcon, Fingerprint } from 'lucide-react';
 import { SignalManager } from './SignalManager';
 import { requestNotificationPermission } from '../lib/notifications';
 
@@ -13,7 +13,8 @@ export function ProfileEditor({
   onUpdateSignal, 
   onDeleteSignal,
   onRestoreSignals,
-  onDeleteAccount
+  onDeleteAccount,
+  onPairBiometrics
 }) {
   const [formData, setFormData] = useState({
     name: profile?.name || '',
@@ -193,7 +194,10 @@ export function ProfileEditor({
            <button type="button" className="sys-btn-calm" onClick={handleRequestPermission}>
              <Bell size={16} /> Ativar Notificações no Dispositivo
            </button>
-           <p className="sys-hint-calm">Ative para receber avisos do seu parceiro mesmo com o app fechado.</p>
+           <button type="button" className="sys-btn-calm" onClick={onPairBiometrics}>
+             <Fingerprint size={16} /> Configurar Digital / FaceID
+           </button>
+           <p className="sys-hint-calm">Ative para entrar no app sem precisar digitar o PIN.</p>
         </div>
 
         <button type="submit" className="save-btn-calm">

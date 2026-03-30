@@ -121,7 +121,19 @@ function App() {
     }
   };
 
-  // 2. Real-time e Dados do Parceiro
+  useEffect(() => {
+    // 1. Reconexão Automática Mobile (V19.6)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('App visível - Atualizando conexão...');
+        fetchProfile(session?.user?.id);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [session?.user?.id]);
+
   useEffect(() => {
     if (!currentUser || !currentUser.partner_id) return;
 
@@ -391,13 +403,78 @@ function App() {
     }
   };
 
+  // 19.5: Biometria nativa
+  const handlePairBiometrics = async () => {
+    try {
+      if (!window.isSecureContext || !window.PublicKeyCredential) {
+        alert("A biometria requer HTTPS.");
+        return;
+      }
+
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const userId = new Uint8Array(16);
+      window.crypto.getRandomValues(userId);
+
+      const credential = await navigator.credentials.create({
+        publicKey: {
+          challenge,
+          rp: { name: "Nossos Sinais" },
+          user: {
+            id: userId,
+            name: currentUser?.name || "usuario",
+            displayName: currentUser?.nickname || "Amor"
+          },
+          pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+          authenticatorSelection: { authenticatorAttachment: "platform" },
+          timeout: 60000
+        }
+      });
+
+      if (credential) {
+        localStorage.setItem('biometric_paired', 'true');
+        alert("Biometria vinculada com sucesso! 🎉");
+      }
+    } catch (err) {
+      console.error(err);
+      if (err.name !== 'NotAllowedError') alert("Erro ao vincular biometria.");
+    }
+  };
+
+  const handleBiometricUnlock = async () => {
+    try {
+      const isPaired = localStorage.getItem('biometric_paired') === 'true';
+      if (!isPaired) return false;
+
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+
+      const assertion = await navigator.credentials.get({
+        publicKey: {
+          challenge,
+          timeout: 60000,
+          userVerification: "required"
+        }
+      });
+
+      if (assertion) {
+        handleUnlock();
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  };
+
   if (loading) return <LoadingScreen />;
   if (!session) return <AuthScreen onAuthSuccess={(u) => fetchProfile(u.id)} />;
   
   // Logs de Depuração (Apenas interna)
   console.log("Estado Atual:", { hasUser: !!currentUser, name: currentUser?.name, partnerId: currentUser?.partner_id, hasPartnerData: !!partnerUser });
 
-  if (isLocked) return <LockScreen onUnlock={handleUnlock} />;
+  if (isLocked) return <LockScreen onUnlock={handleUnlock} onBiometricUnlock={handleBiometricUnlock} />;
   
   // Roteamento de Onboarding
   if (!currentUser) return <LoadingScreen />;
@@ -466,6 +543,7 @@ function App() {
               onDeleteSignal={handleDeleteSignalType}
               onRestoreSignals={handleRestoreDefaults}
               onDeleteAccount={handleDeleteAccount}
+              onPairBiometrics={handlePairBiometrics}
             />
             <button className="logout-action" onClick={handleLogout}><LogOut size={16} /> Encerrar sessão</button>
           </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, Fingerprint, ShieldCheck } from 'lucide-react';
 
-export function LockScreen({ onUnlock }) {
+export function LockScreen({ onUnlock, onBiometricUnlock }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
   const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
@@ -20,11 +20,14 @@ export function LockScreen({ onUnlock }) {
 
   const handleBiometricUnlock = async () => {
     try {
-      // Nota: Em modo PWA/Mobile, o prompt de biometria real exige HTTPS e WebAuthn.
-      // Por segurança, exigimos o PIN caso a biometria não dispare corretamente.
-      if (window.PublicKeyCredential && isBiometricAvailable) {
-        // Aqui o app tentaria o WebAuthn real. Para esta versão, mantemos o foco no PIN.
-        alert("Para usar a biometria nativa, o app precisa estar instalado e em ambiente seguro (HTTPS). Use seu PIN por enquanto.");
+      const success = await onBiometricUnlock();
+      if (success) {
+        // Redirecionamento já feito pelo handleUnlock() no App.jsx via prop
+      } else {
+        const isPaired = localStorage.getItem('biometric_paired') === 'true';
+        if (!isPaired) {
+          alert("Você primeiro precisa ativar a biometria na aba 'Eu' (Configurações).");
+        }
       }
     } catch (err) {
       console.error("Erro na biometria:", err);
