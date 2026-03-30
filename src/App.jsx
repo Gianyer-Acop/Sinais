@@ -243,6 +243,25 @@ function App() {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    try {
+      const pin = prompt("Por segurança, digite seu PIN para confirmar a exclusão:");
+      const savedPin = localStorage.getItem('app_pin') || '1234';
+      if (pin !== savedPin) {
+        alert("PIN incorreto. Ação cancelada.");
+        return;
+      }
+      
+      const { error } = await supabase.from('profiles').delete().eq('id', currentUser.id);
+      if (error) throw error;
+      
+      alert("Sua conta e dados foram apagados permanentemente. Até logo! 👋");
+      handleLogout();
+    } catch (err) {
+      alert("Erro ao excluir conta: " + err.message);
+    }
+  };
+
   const handleSendMessage = async (text) => {
     try {
       const { error } = await supabase.from('messages').insert({
@@ -403,7 +422,7 @@ function App() {
       <header className="app-header">
         <h1>Nossos Sinais</h1>
         <div className="header-actions">
-           <Heart size={20} fill="#b56576" color="#b56576" />
+           <img src="/nosso_mascote_final.png" alt="Logo" style={{ width: '42px', height: '42px', objectFit: 'contain' }} />
         </div>
       </header>
 
@@ -446,6 +465,7 @@ function App() {
               onUpdateSignal={handleUpdateSignalType}
               onDeleteSignal={handleDeleteSignalType}
               onRestoreSignals={handleRestoreDefaults}
+              onDeleteAccount={handleDeleteAccount}
             />
             <button className="logout-action" onClick={handleLogout}><LogOut size={16} /> Encerrar sessão</button>
           </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Camera, Check, Shield, Lock, LayoutGrid, Bell } from 'lucide-react';
+import { Save, Camera, Check, Shield, Lock, LayoutGrid, Bell, Settings as SettingsIcon } from 'lucide-react';
 import { SignalManager } from './SignalManager';
 import { requestNotificationPermission } from '../lib/notifications';
 
@@ -12,7 +12,8 @@ export function ProfileEditor({
   onAddSignal, 
   onUpdateSignal, 
   onDeleteSignal,
-  onRestoreSignals
+  onRestoreSignals,
+  onDeleteAccount
 }) {
   const [formData, setFormData] = useState({
     name: profile?.name || '',
@@ -43,7 +44,6 @@ export function ProfileEditor({
   };
 
   const handleRequestPermission = () => {
-    // Chamada direta para garantir o gesto do usuário
     requestNotificationPermission().then(permission => {
       if (permission === 'granted') {
         alert("Ótimo! Notificações ativadas com sucesso. 🎉");
@@ -118,7 +118,7 @@ export function ProfileEditor({
         </div>
 
         <div className="section-title-calm">
-           <Settings2 size={18} /> <span>Dados Básicos</span>
+           <SettingsIcon size={18} /> <span>Dados Básicos</span>
         </div>
         <div className="input-group-calm">
           <label>Como você se chama?</label>
@@ -158,7 +158,7 @@ export function ProfileEditor({
         <div className="lock-control-calm">
            <div className="lock-text">
               <strong>PIN de Acesso</strong>
-              <p>Pedir senha ao abrir o app (24h)</p>
+              <p>Pedir senha ao abrir o app</p>
            </div>
            <label className="switch-calm">
               <input 
@@ -200,6 +200,23 @@ export function ProfileEditor({
           <Check size={20} />
           <span>Salvar Alterações</span>
         </button>
+
+        <div className="danger-zone-calm">
+          <div className="danger-content">
+            <Shield size={20} color="#ff6b6b" />
+            <div className="danger-text">
+              <strong>Zona de Perigo</strong>
+              <p>A exclusão da conta é permanente e apagará todos os seus sinais e mensagens.</p>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            className="delete-account-btn"
+            onClick={onDeleteAccount}
+          >
+            Excluir Minha Conta
+          </button>
+        </div>
       </form>
 
       <style dangerouslySetInnerHTML={{ __html: `
@@ -268,11 +285,20 @@ export function ProfileEditor({
           background: var(--color-primary); color: #fff; font-weight: 800; font-size: 1.1rem;
           display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;
         }
+
+        .danger-zone-calm { 
+          margin-top: 40px; padding: 20px; border-radius: 24px; border: 1px dashed #ff6b6b;
+          background: rgba(255, 107, 107, 0.05); display: flex; flex-direction: column; gap: 15px;
+        }
+        .danger-content { display: flex; gap: 15px; align-items: flex-start; }
+        .danger-text strong { display: block; font-size: 0.95rem; color: #ff6b6b; }
+        .danger-text p { font-size: 0.8rem; color: #888; font-weight: 600; line-height: 1.4; }
+        .delete-account-btn { 
+          padding: 14px; border-radius: 14px; border: 1px solid #ff6b6b; background: #fff;
+          color: #ff6b6b; font-weight: 800; font-size: 0.9rem; cursor: pointer; transition: 0.2s;
+        }
+        .delete-account-btn:hover { background: #ff6b6b; color: #fff; }
       `}} />
     </div>
   );
 }
-
-// Helper to include missing Lucide icons locally if needed
-function Settings2({ size }) { return <LayoutGrid size={size} />; }
-function Settings({ size }) { return <Shield size={size} />; }

@@ -23,7 +23,7 @@ export function LoadingScreen() {
     <div className="loading-screen-premium">
       <div className="loading-content">
         <div className="heart-pulse-container">
-          <Heart size={60} fill="currentColor" />
+          <img src="/nosso_mascote_final.png" alt="Carregando" style={{ width: '140px', height: '140px', objectFit: 'contain' }} />
         </div>
         <h1 className="loading-title">Nossos Sinais</h1>
         <p className="loading-phrase">{phrase}</p>

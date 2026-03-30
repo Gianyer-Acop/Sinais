@@ -7,7 +7,9 @@ export function LockScreen({ onUnlock }) {
   const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
 
   useEffect(() => {
-    if (window.PublicKeyCredential) {
+    // Biometria só é possível em ambientes seguros (HTTPS ou Localhost em alguns navegadores)
+    const isSecure = window.isSecureContext;
+    if (isSecure && window.PublicKeyCredential) {
       PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
         .then(available => {
           setIsBiometricAvailable(available);
@@ -74,13 +76,16 @@ export function LockScreen({ onUnlock }) {
           ))}
           <button className="pin-num-btn-aux" onClick={() => setPin('')}>Limpar</button>
           <button className="pin-num-btn" onClick={() => handlePinInput('0')}>0</button>
-          <button 
-            className={`pin-num-btn-aux ${isBiometricAvailable ? 'active' : ''}`}
-            onClick={handleBiometricUnlock}
-            title="Usar Biometria"
-          >
-            <Fingerprint size={24} color={isBiometricAvailable ? 'var(--color-primary)' : '#ccc'} />
-          </button>
+          {isBiometricAvailable && window.isSecureContext && (
+            <button 
+              className="pin-num-btn-aux active"
+              onClick={handleBiometricUnlock}
+              title="Usar Biometria"
+            >
+              <Fingerprint size={24} color="var(--color-primary)" />
+            </button>
+          )}
+          {!isBiometricAvailable && <div />}
         </div>
       </div>
 
