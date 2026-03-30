@@ -545,7 +545,7 @@ function App() {
   // Fazemos isso setando a aba automaticamente, mas não bloqueamos a renderização
   // A aba 'perfil' terá o ProfileSetupScreen integrado
   if (!currentUser.name) {
-    return <ProfileSetupScreen onSave={async (data) => { await handleSaveProfile(data); setActiveTab('partner'); }} />;
+    return <ProfileSetupScreen onSave={async (data) => { await handleSaveProfile(data); setActiveTab('signals'); }} />;
   }
 
   // 2. Sem parceiro vinculado → app abre normalmente, Vida mostra painel de vínculo
