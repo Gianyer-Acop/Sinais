@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Camera, Check, Heart } from 'lucide-react';
+import { Check, Heart } from 'lucide-react';
 
 const ICONS = ['🦊', '🐨', '🦦', '🦉', '🦄', '🦁', '🐼', '🐯', '🐸', '🐙', '🐰', '🐹'];
 
-export function ProfileSetupScreen({ onSave }) {
+export function ProfileSetupScreen({ onSave, showModal }) {
   const [formData, setFormData] = useState({
     name: '',
     nickname: '',
@@ -12,7 +12,14 @@ export function ProfileSetupScreen({ onSave }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.name.trim()) return alert("Por favor, digite seu nome.");
+    if (!formData.name.trim()) {
+      showModal({ 
+        title: 'Campo Obrigatório', 
+        message: "Por favor, digite seu nome para que seu parceiro te identifique.", 
+        type: 'info' 
+      });
+      return;
+    }
     onSave(formData);
   };
 
@@ -78,7 +85,7 @@ export function ProfileSetupScreen({ onSave }) {
 
       <style dangerouslySetInnerHTML={{ __html: `
         .setup-screen-calm {
-          height: 100%; display: flex; align-items: center; justify-content: center;
+          height: 100vh; display: flex; align-items: center; justify-content: center;
           background-color: var(--bg-primary); padding: 20px;
         }
         .setup-card-minimal {

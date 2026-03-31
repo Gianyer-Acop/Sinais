@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Camera, Check, Shield, Lock, LayoutGrid, Bell, Settings as SettingsIcon, Fingerprint } from 'lucide-react';
+import { User, Heart, Bell, Shield, Trash2, Plus, Edit2, Trash, Save, RotateCcw, HelpCircle, Camera, Check, Lock, LayoutGrid, Settings as SettingsIcon, Fingerprint } from 'lucide-react';
 import { SignalManager } from './SignalManager';
 import { requestNotificationPermission } from '../lib/notifications';
 
@@ -14,7 +14,8 @@ export function ProfileEditor({
   onDeleteSignal,
   onRestoreSignals,
   onDeleteAccount,
-  onPairBiometrics
+  onPairBiometrics,
+  showModal
 }) {
   const [formData, setFormData] = useState({
     name: profile?.name || '',
@@ -23,8 +24,8 @@ export function ProfileEditor({
     theme_preference: profile?.theme_preference || 'sage'
   });
 
-  const [lockEnabled, setLockEnabled] = useState(localStorage.getItem('app_lock_enabled') === 'true');
-  const [appPin, setAppPin] = useState(localStorage.getItem('app_pin') || '1234');
+  const [lockEnabled, setLockEnabled] = useState(profile?.lock_enabled ?? (localStorage.getItem('app_lock_enabled') === 'true'));
+  const [appPin, setAppPin] = useState(profile?.pin || localStorage.getItem('app_pin') || '');
   const [showSignalManager, setShowSignalManager] = useState(false);
 
   useEffect(() => {
@@ -44,27 +45,28 @@ export function ProfileEditor({
     localStorage.setItem('app_theme', newTheme);
   };
 
-  const handleRequestPermission = () => {
-    requestNotificationPermission().then(permission => {
+  const handleRequestPermission = async () => {
+    try {
+      const permission = await Notification.requestPermission();
       if (permission === 'granted') {
-        alert("Ótimo! Notificações ativadas com sucesso. 🎉");
+        showModal({ title: 'Notificações Ativas!', message: "Ótimo! Notificações ativadas com sucesso. 🎉", type: 'success' });
       } else if (permission === 'denied') {
-        alert("As notificações foram bloqueadas. Você precisará permitir nas configurações do seu navegador.");
+        showModal({ title: 'Bloqueado', message: "As notificações foram bloqueadas. Você precisará permitir nas configurações do seu navegador.", type: 'error' });
       } else {
-        alert("Não foi possível ativar as notificações neste dispositivo.");
+        showModal({ title: 'Atenção', message: "Não foi possível ativar as notificações neste dispositivo.", type: 'info' });
       }
-    }).catch(err => {
+    } catch (err) {
       console.error(err);
-      alert("Erro ao tentar ativar notificações.");
-    });
+      showModal({ title: 'Ops!', message: "Erro ao tentar ativar notificações.", type: 'error' });
+    }
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     localStorage.setItem('app_lock_enabled', lockEnabled.toString());
     localStorage.setItem('app_pin', appPin);
-    onSave(formData);
-    alert("Preferências atualizadas! ❤️");
+    onSave({ ...formData, pin: appPin, lock_enabled: lockEnabled });
+    showModal({ title: 'Perfil Salvo', message: "Preferências atualizadas! ❤️", type: 'success' });
   };
 
   if (showSignalManager) {
@@ -75,6 +77,7 @@ export function ProfileEditor({
         onSave={onUpdateSignal}
         onDelete={onDeleteSignal}
         onRestore={onRestoreSignals}
+        showModal={showModal}
         onClose={() => setShowSignalManager(false)}
       />
     );
@@ -194,7 +197,7 @@ export function ProfileEditor({
            <button type="button" className="sys-btn-calm" onClick={handleRequestPermission}>
              <Bell size={16} /> Ativar Notificações no Dispositivo
            </button>
-           <button type="button" className="sys-btn-calm" onClick={onPairBiometrics}>
+           <button type="button" className="sys-btn-calm" id="tour-biometrics" onClick={onPairBiometrics}>
              <Fingerprint size={16} /> Configurar Digital / FaceID
            </button>
            <p className="sys-hint-calm">Ative para entrar no app sem precisar digitar o PIN.</p>
@@ -213,12 +216,21 @@ export function ProfileEditor({
               <p>A exclusão da conta é permanente e apagará todos os seus sinais e mensagens.</p>
             </div>
           </div>
+          <button type="button" className="delete-account-btn" onClick={onDeleteAccount}>
+            <Trash2 size={18} />
+            <span>Apagar minha conta</span>
+          </button>
           <button 
-            type="button" 
-            className="delete-account-btn"
-            onClick={onDeleteAccount}
+            type="button"
+            className="delete-account-btn" 
+            onClick={() => {
+              localStorage.removeItem(`tour_completed_${profile.id}`);
+              window.location.reload();
+            }}
+            style={{ marginTop: '10px', background: 'var(--bg-primary)', color: 'var(--color-primary)', borderColor: 'var(--color-accent)' }}
           >
-            Excluir Minha Conta
+            <HelpCircle size={18} />
+            <span>Refazer Tour de Boas-vindas</span>
           </button>
         </div>
       </form>

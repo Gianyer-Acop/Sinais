@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, Fingerprint, ShieldCheck } from 'lucide-react';
 
-export function LockScreen({ onUnlock, onBiometricUnlock }) {
+export function LockScreen({ onUnlock, onBiometricUnlock, showModal }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
   const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
@@ -25,8 +25,8 @@ export function LockScreen({ onUnlock, onBiometricUnlock }) {
         // Redirecionamento já feito pelo handleUnlock() no App.jsx via prop
       } else {
         const isPaired = localStorage.getItem('biometric_paired') === 'true';
-        if (!isPaired) {
-          alert("Você primeiro precisa ativar a biometria na aba 'Eu' (Configurações).");
+        if (!success) {
+          showModal({ title: 'Atenção', message: "Você primeiro precisa ativar a biometria na aba 'Eu' (Configurações).", type: 'info' });
         }
       }
     } catch (err) {

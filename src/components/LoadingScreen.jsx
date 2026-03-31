@@ -12,12 +12,17 @@ const PHRASES = [
   "Sempre perto de você..."
 ];
 
-export function LoadingScreen() {
+export function LoadingScreen({ message }) {
   const [phrase, setPhrase] = useState('');
 
+
   useEffect(() => {
-    setPhrase(PHRASES[Math.floor(Math.random() * PHRASES.length)]);
-  }, []);
+    if (message) {
+      setPhrase(message);
+    } else {
+      setPhrase(PHRASES[Math.floor(Math.random() * PHRASES.length)]);
+    }
+  }, [message]);
 
   return (
     <div className="loading-screen-premium">

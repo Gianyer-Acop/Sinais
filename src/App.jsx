@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
+import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from './lib/supabaseClient';
 import { SignalGrid } from './components/SignalGrid';
 import { ChatRoom } from './components/ChatRoom';
 import { ProfileEditor } from './components/ProfileEditor';
@@ -11,6 +11,8 @@ import { PartnerSummary } from './components/PartnerSummary';
 import { ToastContainer } from './components/ToastContainer';
 import { LoadingScreen } from './components/LoadingScreen';
 import { WelcomeTour } from './components/WelcomeTour';
+import { CustomModal } from './components/CustomModal';
+import { SignalManager } from './components/SignalManager';
 import { requestNotificationPermission, sendLocalNotification } from './lib/notifications';
 import { User, MessageSquare, Settings, Zap, Heart, LogOut, Lock } from 'lucide-react';
 import './App.css';
@@ -38,6 +40,19 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState([]);
   const [showTour, setShowTour] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showSignalManagerGlobally, setShowSignalManagerGlobally] = useState(false);
+  const [fadingOut, setFadingOut] = useState(false);
+  const [modalConfig, setModalConfig] = useState({ show: false });
+  const [refreshCounter, setRefreshCounter] = useState(0);
+
+  const currentUserRef = useRef(currentUser);
+  const partnerIdRef = useRef(currentUser?.partner_id);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+    partnerIdRef.current = currentUser?.partner_id;
+  }, [currentUser]);
 
   // 0. Aplicar Tema IMEDIATAMENTE (LocalStorage)
   useEffect(() => {
@@ -60,6 +75,34 @@ function App() {
     setToasts(prev => [...prev, { id, title, body, icon }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   };
+
+  const showModal = (config) => {
+    return new Promise((resolve) => {
+      setModalConfig({
+        ...config,
+        show: true,
+        onConfirm: (value) => {
+          setModalConfig({ show: false });
+          resolve(value);
+        },
+        onCancel: () => {
+          setModalConfig({ show: false });
+          resolve(null);
+        }
+      });
+    });
+  };
+ 
+  // 19.9: Garantir que o tour comece assim que o usuário tiver um nome e estiver no layout principal
+  useEffect(() => {
+    if (currentUser?.id && currentUser?.name) {
+      if (!localStorage.getItem(`tour_completed_${currentUser.id}`)) {
+        // Pequeno delay para garantir que os elementos do DOM estejam renderizados
+        const t = setTimeout(() => setShowTour(true), 1200);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [!!currentUser?.name, currentUser?.id]);
 
   // 1. Gerenciar Sessão e Perfil
   useEffect(() => {
@@ -91,9 +134,8 @@ function App() {
         .select('*')
         .eq('id', userId)
         .single();
-      
+
       if (error && error.code === 'PGRST116') {
-        // Perfil não existe - criar um novo
         const { data: { user } } = await supabase.auth.getUser();
         const codeFromMeta = user?.user_metadata?.connection_code || Math.floor(100000 + Math.random() * 900000).toString();
         const { data: newProfile, error: insError } = await supabase
@@ -103,11 +145,10 @@ function App() {
           .single();
         if (insError) throw insError;
         profile = newProfile;
+        await initializeDefaultSignals(userId);
       } else if (error) {
-        // Outro erro da API - registrar mas não quebrar
         console.error("Erro ao buscar perfil:", error);
       } else if (profile && !profile.connection_code) {
-        // Perfil existe mas precisa de código de conexão
         const { data: { user } } = await supabase.auth.getUser();
         const codeFromMeta = user?.user_metadata?.connection_code || Math.floor(100000 + Math.random() * 900000).toString();
         const { data: updatedProfile } = await supabase
@@ -121,10 +162,6 @@ function App() {
 
       if (profile) {
         setCurrentUser(profile);
-        // Mostrar tour apenas na primeira vez (após ter parceiro vinculado)
-        if (!localStorage.getItem('tour_completed') && profile.partner_id) {
-          setShowTour(true);
-        }
       }
     } catch (err) {
       console.error("Erro crítico no perfil:", err);
@@ -134,7 +171,6 @@ function App() {
   };
 
   useEffect(() => {
-    // 1. Reconexão Automática Mobile (V19.6)
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         console.log('App visível - Atualizando conexão...');
@@ -147,41 +183,78 @@ function App() {
   }, [session?.user?.id]);
 
   useEffect(() => {
-    if (!currentUser || !currentUser.partner_id) return;
-
-    const partnerId = currentUser.partner_id;
-
+    if (!currentUser) return;
+    
     const fetchData = async () => {
-      const { data: partner } = await supabase.from('profiles').select('*').eq('id', partnerId).single();
-      if (partner) setPartnerUser(partner);
+      const partnerId = currentUser.partner_id;
+      
+      if (partnerId) {
+        const { data: partner } = await supabase.from('profiles').select('*').eq('id', partnerId).single();
+        if (partner) setPartnerUser(partner);
+      } else {
+        setPartnerUser(null);
+        setPartnerSignal(null);
+      }
 
-      // Filtro de Histórico (12h fixo: 00:00 ou 12:00)
       const now = new Date();
       const lastMark = new Date(now);
       lastMark.setHours(now.getHours() < 12 ? 0 : 12, 0, 0, 0);
-      
-      // Carregar signal_types PRIMEIRO para resolver labels dos sinais
+
       const { data: stypes } = await supabase.from('signal_types')
         .select('*')
+        .or(`created_by.eq.${currentUser.id}${partnerId ? `,created_by.eq.${partnerId}` : ''}`)
         .order('created_at', { ascending: true });
-      if (stypes) setSignalTypes(stypes);
+
+      if (stypes) {
+        // UNIFICAÇÃO: Remover duplicatas de nomes (labels) para o Grid
+        const uniqueTypes = [];
+        const labelsSeen = new Set();
+        stypes.forEach(t => {
+          if (!labelsSeen.has(t.label)) {
+            uniqueTypes.push(t);
+            labelsSeen.add(t.label);
+          }
+        });
+        setSignalTypes(uniqueTypes);
+
+        // Garantir sinais padrão se a lista estiver realmente vazia
+        if (uniqueTypes.length === 0 && currentUser?.id) {
+           console.log("Inicializando sinais padrão para:", currentUser.id);
+           await initializeDefaultSignals(currentUser.id, partnerId);
+           const { data: retry } = await supabase.from('signal_types')
+             .select('*')
+             .or(`created_by.eq.${currentUser.id}${partnerId ? `,created_by.eq.${partnerId}` : ''}`)
+             .order('created_at', { ascending: true });
+           if (retry) {
+              const uniqueRetry = [];
+              const retryLabels = new Set();
+              retry.forEach(r => { if(!retryLabels.has(r.label)) { uniqueRetry.push(r); retryLabels.add(r.label); } });
+              setSignalTypes(uniqueRetry);
+           }
+        }
+      }
 
       const { data: signals } = await supabase.from('signals')
         .select('*')
+        .or(`and(user_id.eq.${currentUser.id},receiver_id.eq.${partnerId}),and(user_id.eq.${partnerId},receiver_id.eq.${currentUser.id})`)
         .gte('created_at', lastMark.toISOString())
         .order('created_at', { ascending: false });
-        
+
       if (signals) {
-        // Resolver label e color usando stypes e SIGNALS_MAP
-        setSignalsHistory(signals.map(s => {
-          const customType = stypes?.find(t => t.id === s.status_id);
-          const mapped = SIGNALS_MAP[s.status_id];
-          const label = customType?.label || mapped?.label || s.status_id;
-          const color = customType?.color || mapped?.color || 'var(--color-primary)';
-          return { label, color, timestamp: s.created_at, user_id: s.user_id };
-        }));
-        const lPart = signals.find(s => s.user_id === partnerId);
-        if (lPart) setPartnerSignal(lPart.status_id);
+        const h = signals.map(s => {
+          // Procurar o tipo correspondente na lista completa de stypes (não apenas os únicos do grid)
+          const customType = (stypes || []).find(t => t.id === s.status_id);
+          const resolved = customType
+            ? { label: customType.label, color: customType.color }
+            : (SIGNALS_MAP[s.status_id] || { label: 'Sinal Personalizado', color: 'var(--color-primary)' });
+          return { ...resolved, timestamp: s.created_at, user_id: s.user_id };
+        });
+        setSignalsHistory(h);
+        
+        if (partnerId) {
+          const lPart = signals.find(s => s.user_id === partnerId);
+          if (lPart) setPartnerSignal(lPart.status_id);
+        }
       }
 
       const { data: convs } = await supabase.from('conversations')
@@ -189,84 +262,108 @@ function App() {
         .order('created_at', { ascending: false });
       if (convs) setConversations(convs);
 
-      const { data: msgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(20);
+      const { data: msgs } = await supabase.from('messages')
+        .select('*')
+        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${currentUser.id})`)
+        .order('created_at', { ascending: false })
+        .limit(20);
       if (msgs) setMessages(msgs.reverse());
     };
 
     fetchData();
+  }, [currentUser?.id, currentUser?.partner_id, refreshCounter]);
 
-    const channel = supabase.channel('realtime-nossos-sinais')
-      .on('postgres_changes', { event: 'INSERT', table: 'signals' }, (p) => {
-        // Resolver label e color de qualquer tipo de sinal (padrão ou customizado)
-        const resolveSignal = (statusId) => {
-          // 1. Tentar no mapa fixo primeiro
-          if (SIGNALS_MAP[statusId]) return SIGNALS_MAP[statusId];
-          // 2. Buscar nos signalTypes customizados (usar setSignalTypes via closure não funciona aqui,
-          //    então usamos um ref ou relemos do estado via functional update)
-          return { label: statusId, color: 'var(--color-primary)' };
-        };
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const myId = currentUser.id;
+    const pId = currentUser.partner_id;
 
-        if (p.new.user_id === partnerId) {
-          setPartnerSignal(p.new.status_id);
-          // Resolver o nome do sinal usando signalTypes atual (via estado funcional)
-          setSignalTypes(currentTypes => {
-            const customType = currentTypes.find(t => t.id === p.new.status_id);
-            const signalLabel = customType?.label || SIGNALS_MAP[p.new.status_id]?.label || p.new.status_id;
+    console.log("Reiniciando Canal Realtime para:", { myId, pId });
+
+    const channel = supabase.channel(`realtime-v4-${myId}`)
+      .on('postgres_changes', { event: '*', table: 'signals' }, (p) => {
+        console.log("Realtime: Sinal recebido:", p);
+        if (p.eventType === 'INSERT') {
+          if (p.new.user_id === pId) {
+            setPartnerSignal(p.new.status_id);
+            const signalLabel = SIGNALS_MAP[p.new.status_id]?.label || p.new.status_id;
             const partnerName = partnerUser?.nickname || partnerUser?.name || 'Seu Amor';
-            sendLocalNotification(`Sinal de ${partnerName}`, `Novo estado: ${signalLabel}`);
+            sendLocalNotification(`Sinal de ${partnerName}`, signalLabel);
             addToast(`Sinal de ${partnerName}`, `Seu amor está: ${signalLabel}`, '🍃');
-            return currentTypes; // não altera o estado
-          });
-        } else if (p.new.user_id === currentUser.id) {
-          setMySignal(p.new.status_id);
+            setSignalsHistory(prev => [{ label: signalLabel, color: SIGNALS_MAP[p.new.status_id]?.color || 'var(--color-primary)', timestamp: p.new.created_at, user_id: p.new.user_id }, ...prev].slice(0, 20));
+          } else if (p.new.user_id === myId) {
+            setMySignal(p.new.status_id);
+            const mapped = SIGNALS_MAP[p.new.status_id] || { label: p.new.status_id, color: 'var(--color-primary)' };
+            setSignalsHistory(prev => [{...mapped, timestamp: p.new.created_at, user_id: p.new.user_id}, ...prev].slice(0, 20));
+          }
         }
-
-        // Adicionar ao histórico com label e color resolvidos de signalTypes ou SIGNALS_MAP
-        setSignalTypes(currentTypes => {
-          const customType = currentTypes.find(t => t.id === p.new.status_id);
-          const resolved = customType
-            ? { label: customType.label, color: customType.color }
-            : (SIGNALS_MAP[p.new.status_id] || { label: p.new.status_id, color: 'var(--color-primary)' });
-
-          setSignalsHistory(prev => [
-            { ...resolved, timestamp: p.new.created_at, user_id: p.new.user_id },
-            ...prev
-          ].slice(0, 20));
-          return currentTypes; // não altera signalTypes
-        });
+        setRefreshCounter(prev => prev + 1);
       })
-      .on('postgres_changes', { event: 'INSERT', table: 'messages' }, (p) => {
-        setMessages(prev => [...prev, p.new]);
-        if (p.new.sender_id === partnerId) {
-          sendLocalNotification("Nova Mensagem", p.new.text);
-          addToast("Mensagem", p.new.text, '💬');
+      .on('postgres_changes', { event: '*', table: 'notifications' }, (p) => {
+        console.log("Realtime: Notificação recebida:", p);
+        if (p.eventType === 'INSERT' && (p.new.user_id === myId)) {
+          sendLocalNotification(p.new.title, p.new.body);
+          addToast(p.new.title, p.new.body, '🔔');
         }
+        setRefreshCounter(prev => prev + 1);
       })
-      .on('postgres_changes', { event: 'UPDATE', table: 'profiles' }, (p) => {
-        if (p.new.id === partnerId) setPartnerUser(p.new);
-        else if (p.new.id === currentUser.id) setCurrentUser(p.new);
+      .on('postgres_changes', { event: '*', table: 'messages' }, (p) => {
+        console.log("Realtime: Mensagem recebida:", p);
+        if (p.eventType === 'INSERT') {
+          setMessages(prev => [...prev, p.new]);
+          if (p.new.sender_id === pId) {
+            sendLocalNotification("Nova Mensagem", p.new.text);
+            addToast("Mensagem", p.new.text, '💬');
+          }
+        }
+        setRefreshCounter(prev => prev + 1);
       })
-      .on('postgres_changes', { event: 'INSERT', table: 'conversations' }, (p) => {
-        setConversations(prev => [p.new, ...prev]);
+      .on('postgres_changes', { event: '*', table: 'profiles' }, (p) => {
+        console.log("Realtime: Perfil alterado:", p);
+        // Se o meu perfil mudou (o banco pode ter limpado o partner_id via trigger)
+        // ou se o perfil do meu parceiro mudou
+        const isMe = p.new?.id === myId || p.old?.id === myId;
+        const isPartner = (pId && (p.new?.id === pId || p.old?.id === pId));
+
+        if (isMe || isPartner) {
+          console.log("Sincronizando perfil devido a mudança atômica...");
+          fetchProfile(myId);
+          setRefreshCounter(prev => prev + 1);
+        }
       })
       .on('postgres_changes', { event: '*', table: 'signal_types' }, (p) => {
-        if (p.event === 'INSERT') setSignalTypes(prev => [...prev, p.new]);
-        if (p.event === 'UPDATE') setSignalTypes(prev => prev.map(s => s.id === p.new.id ? p.new : s));
-        if (p.event === 'DELETE') setSignalTypes(prev => prev.filter(s => s.id === p.old.id));
+        console.log("Realtime: Tipos de sinais alterados");
+        setRefreshCounter(prev => prev + 1);
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`Status do Canal Realtime: ${status}`);
+      });
 
-    return () => supabase.removeChannel(channel);
-  }, [currentUser]);
+    return () => {
+      console.log("Limpando Canal Realtime antigo...");
+      supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id, currentUser?.partner_id]);
 
   const handleUnlock = () => { setIsLocked(false); localStorage.setItem('last_unlock', Date.now().toString()); };
-  const handleLock = () => { setIsLocked(true); };
-  const handleLogout = async () => { await supabase.auth.signOut(); localStorage.removeItem('last_unlock'); setIsLocked(true); };
+  const handleLock = () => {
+    if (!currentUser?.pin) {
+      showModal({ 
+        title: 'PIN não definido', 
+        message: 'Você precisa definir um PIN de 4 dígitos na aba "Eu" antes de poder bloquear o app e garantir sua privacidade.', 
+        type: 'info' 
+      });
+      return;
+    }
+    setIsLocked(true); 
+  };
+  const handleLogout = async () => { await supabase.auth.signOut(); localStorage.removeItem('last_unlock'); setIsLocked(true); setIsDeleting(false); };
 
   const handleSignalSelect = async (statusId) => {
     try {
       const { error } = await supabase.from('signals').insert({
-        user_id: currentUser.id,
+        user_id: currentUser?.id,
+        receiver_id: currentUser?.partner_id,
         status_id: statusId
       });
       if (error) throw error;
@@ -284,33 +381,53 @@ function App() {
           name: formData.name,
           nickname: formData.nickname,
           icon: formData.icon,
-          theme_preference: formData.theme_preference
+          theme_preference: formData.theme_preference,
+          pin: formData.pin,
+          lock_enabled: formData.lock_enabled
         })
         .eq('id', currentUser.id);
-      
+
       if (error) throw error;
-      fetchProfile(currentUser.id);
+      
+       fetchProfile(currentUser.id);
     } catch (err) {
-      alert("Erro ao salvar: " + err.message);
+      showModal({ title: 'Ops!', message: "Erro ao salvar: " + err.message, type: 'error' });
     }
   };
 
-  const handleDeleteAccount = async () => {
+   const handleDeleteAccount = async () => {
     try {
-      const pin = prompt("Por segurança, digite seu PIN para confirmar a exclusão:");
-      const savedPin = localStorage.getItem('app_pin') || '1234';
+      const pin = await showModal({ 
+        title: 'Confirmar Exclusão', 
+        message: 'Por segurança, digite seu PIN para confirmar a exclusão permanente de sua conta:', 
+        type: 'prompt',
+        confirmText: 'Excluir Vitaliciamente'
+      });
+      
+      const savedPin = currentUser?.pin || '1234';
+      if (!pin) return;
       if (pin !== savedPin) {
-        alert("PIN incorreto. Ação cancelada.");
+        showModal({ title: 'PIN Incorreto', message: `O PIN informado não confere. ${!currentUser?.pin ? '(Dica: Se não definiu um, tente 1234)' : ''}`, type: 'error' });
         return;
       }
-      
+
+      setFadingOut(true);
       const { error } = await supabase.from('profiles').delete().eq('id', currentUser.id);
       if (error) throw error;
       
-      alert("Sua conta e dados foram apagados permanentemente. Até logo! 👋");
-      handleLogout();
+      showModal({ 
+        title: 'Adeus, Amor! ❤️', 
+        message: 'Sua conta e todos os seus dados foram apagados permanentemente com carinho.', 
+        type: 'success' 
+      });
+      
+      setTimeout(async () => {
+        await supabase.auth.signOut();
+        setFadingOut(false);
+      }, 2000);
     } catch (err) {
-      alert("Erro ao excluir conta: " + err.message);
+      setFadingOut(false);
+      showModal({ title: 'Erro ao Apagar', message: err.message, type: 'error' });
     }
   };
 
@@ -318,31 +435,34 @@ function App() {
     try {
       const { error } = await supabase.from('messages').insert({
         sender_id: currentUser?.id,
+        receiver_id: currentUser?.partner_id,
         text: text.trim()
       });
       if (error) throw error;
-    } catch (err) {
+     } catch (err) {
       console.error("Erro ao enviar mensagem:", err);
-      alert("Não foi possível enviar a mensagem.");
+      showModal({ title: 'Erro no Chat', message: "Não foi possível enviar a mensagem.", type: 'error' });
     }
   };
 
   const handleLoadPreviousMessages = async () => {
     if (messages.length === 0) return;
     const oldestMessage = messages[0];
+    const partnerId = currentUser?.partner_id;
     try {
       const { data: olderMsgs, error } = await supabase
         .from('messages')
         .select('*')
+        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${currentUser.id})`)
         .lt('created_at', oldestMessage.created_at)
         .order('created_at', { ascending: false })
-        .limit(15);
-      
+        .limit(20);
+
       if (error) throw error;
-      if (olderMsgs && olderMsgs.length > 0) {
+       if (olderMsgs && olderMsgs.length > 0) {
         setMessages(prev => [...olderMsgs.reverse(), ...prev]);
       } else {
-        alert("Não há mais mensagens para carregar.");
+        showModal({ title: 'Fim do Histórico', message: "Não há mais mensagens para carregar.", type: 'info' });
       }
     } catch (err) {
       console.error("Erro ao carregar anteriores:", err);
@@ -351,12 +471,14 @@ function App() {
 
   const handleAddSignalType = async (type) => {
     try {
-      const { error } = await supabase.from('signal_types').insert({
+      const { data, error } = await supabase.from('signal_types').insert({
         ...type,
         created_by: currentUser.id,
         partner_id: currentUser.partner_id
-      });
+      }).select().single();
+
       if (error) throw error;
+      if (data) setSignalTypes(prev => [...prev, data]);
     } catch (err) { console.error("Erro ao criar sinal:", err); }
   };
 
@@ -364,6 +486,7 @@ function App() {
     try {
       const { error } = await supabase.from('signal_types').update(type).eq('id', type.id);
       if (error) throw error;
+      setSignalTypes(prev => prev.map(s => s.id === type.id ? { ...s, ...type } : s));
     } catch (err) { console.error("Erro ao atualizar sinal:", err); }
   };
 
@@ -371,6 +494,7 @@ function App() {
     try {
       const { error } = await supabase.from('signal_types').delete().eq('id', id);
       if (error) throw error;
+      setSignalTypes(prev => prev.filter(s => s.id !== id));
     } catch (err) { console.error("Erro ao excluir sinal:", err); }
   };
 
@@ -390,31 +514,46 @@ function App() {
         created_by: currentUser.id,
         partner_id: currentUser.partner_id
       }).select().single();
-      
+
       if (error) throw error;
+      if (data) setConversations(prev => [data, ...prev]);
       return data;
-    } catch (err) {
+     } catch (err) {
       console.error("Erro ao criar conversa:", err);
-      alert("Não foi possível criar o novo assunto: " + err.message);
+      showModal({ title: 'Erro ao Criar', message: "Não foi possível criar o novo assunto: " + err.message, type: 'error' });
       return null;
     }
   };
 
-  const handleRestoreDefaults = async () => {
+
+  const initializeDefaultSignals = async (userId, partnerId = null) => {
     const defaults = [
-      { id: 'ok', label: 'Estou bem', icon_name: 'Smile', color: '#84a98c' },
-      { id: 'overwhelmed', label: 'Sobrecarga', icon_name: 'Zap', color: '#d6ba73' },
-      { id: 'hug', label: 'Abraço', icon_name: 'Heart', color: '#b56576' },
-      { id: 'non-verbal', label: 'Não-verbal', icon_name: 'MessageSquareOff', color: '#6d9dc5' },
-      { id: 'crisis', label: 'Crise Aguda', icon_name: 'AlertCircle', color: '#ef4444' }
+      { label: 'Estou bem', icon_name: 'Smile', color: '#84a98c' },
+      { label: 'Sobrecarga', icon_name: 'Zap', color: '#d6ba73' },
+      { label: 'Abraço', icon_name: 'Heart', color: '#b56576' },
+      { label: 'Não-verbal', icon_name: 'MessageSquareOff', color: '#6d9dc5' },
+      { label: 'Crise Aguda', icon_name: 'AlertCircle', color: '#ef4444' }
     ];
-    
+
     for (const s of defaults) {
-      await supabase.from('signal_types').upsert({
+      await supabase.from('signal_types').insert({
         ...s,
-        created_by: currentUser.id,
-        partner_id: currentUser.partner_id
+        created_by: userId,
+        partner_id: partnerId
       });
+    }
+    // O fetchData cuidará de carregar os novos sinais
+  };
+
+  const handleRestoreDefaults = async () => {
+    const confirm = await showModal({
+      title: 'Restaurar Padrões?',
+      message: 'Isso adicionará os 5 sinais originais à sua lista atual. Deseja continuar?',
+      type: 'confirm'
+    });
+    if (confirm) {
+      await initializeDefaultSignals(currentUser.id, currentUser.partner_id);
+      addToast("Sucesso", "Sinais padrão restaurados!", '✨');
     }
   };
 
@@ -434,25 +573,24 @@ function App() {
       const nudgeText = "Pensando em você... 💓";
       const { error } = await supabase.from('messages').insert({
         sender_id: currentUser?.id,
+        receiver_id: currentUser?.partner_id,
         text: nudgeText
       });
-      if (error) throw error;
-      alert("Carinho enviado! ❤️");
+       if (error) throw error;
+      showModal({ title: 'Carinho Enviado!', message: "Seu amor vai receber seu carinho agora mesmo! ❤️", type: 'success' });
     } catch (err) {
       console.error("Erro no carinho:", err);
     }
   };
 
-  // 19.5: Biometria nativa (WebAuthn corrigido - V19.7)
   const handlePairBiometrics = async () => {
     try {
       if (!window.isSecureContext || !window.PublicKeyCredential) {
-        alert("A biometria requer HTTPS.");
+        showModal({ title: 'Indisponível', message: "A biometria requer uma conexão segura (HTTPS).", type: 'error' });
         return;
       }
 
       const challenge = window.crypto.getRandomValues(new Uint8Array(32));
-      // userId fixo derivado do ID do perfil (para reutilizar entre sessões)
       const userIdStr = currentUser?.id || 'default';
       const userId = new TextEncoder().encode(userIdStr.slice(0, 16).padEnd(16, '0'));
 
@@ -476,21 +614,19 @@ function App() {
       });
 
       if (credential) {
-        // CRUCIAL: salvar o ID da chave para usar na autenticação
         const rawId = new Uint8Array(credential.rawId);
-        const base64Id = btoa(String.fromCharCode(...rawId));
+         const base64Id = btoa(String.fromCharCode(...rawId));
         localStorage.setItem('biometric_paired', 'true');
         localStorage.setItem('biometric_credential_id', base64Id);
-        alert("Biometria vinculada! 🎉 Da próxima vez use a digital na tela de bloqueio.");
+        showModal({ title: 'Sucesso!', message: "Biometria vinculada! 🎉 Da próxima vez use sua digital na tela de bloqueio.", type: 'success' });
       }
     } catch (err) {
       console.error(err);
-      if (err.name === 'InvalidStateError') {
-        // Já registrado neste dispositivo
+       if (err.name === 'InvalidStateError') {
         localStorage.setItem('biometric_paired', 'true');
-        alert("Biometria já estava configurada neste dispositivo! 👍");
+        showModal({ title: 'Já Configurado', message: "Biometria já estava configurada neste dispositivo! 👍", type: 'info' });
       } else if (err.name !== 'NotAllowedError') {
-        alert("Erro ao vincular biometria: " + err.message);
+        showModal({ title: 'Erro de Biometria', message: "Erro ao vincular: " + err.message, type: 'error' });
       }
     }
   };
@@ -501,8 +637,7 @@ function App() {
       if (!isPaired || !window.isSecureContext || !window.PublicKeyCredential) return false;
 
       const challenge = window.crypto.getRandomValues(new Uint8Array(32));
-      
-      // Recuperar o credentialId salvo no registro
+
       const base64Id = localStorage.getItem('biometric_credential_id');
       const allowCredentials = base64Id ? [{
         type: "public-key",
@@ -531,99 +666,129 @@ function App() {
   };
 
   if (loading) return <LoadingScreen />;
-  if (!session) return <AuthScreen onAuthSuccess={(u) => fetchProfile(u.id)} />;
-  
-  // Logs de Depuração (Apenas interna)
+  if (isDeleting) return <LoadingScreen message="Apagando seus dados permanentemente... 🌳" />;
+  if (!session) return <AuthScreen onAuthSuccess={(u) => fetchProfile(u.id)} showModal={showModal} />;
+
   console.log("Estado Atual:", { hasUser: !!currentUser, name: currentUser?.name, partnerId: currentUser?.partner_id, hasPartnerData: !!partnerUser });
 
-  if (isLocked) return <LockScreen onUnlock={handleUnlock} onBiometricUnlock={handleBiometricUnlock} />;
-  
+  if (isLocked && currentUser?.pin) return <LockScreen onUnlock={handleUnlock} onBiometricUnlock={handleBiometricUnlock} showModal={showModal} />;
+
   // Roteamento de Onboarding
   if (!currentUser) return <LoadingScreen />;
-  
+
   // 1. Novo usuário sem nome → ir para profile (sem travar o app)
   // Fazemos isso setando a aba automaticamente, mas não bloqueamos a renderização
   // A aba 'perfil' terá o ProfileSetupScreen integrado
   if (!currentUser.name) {
-    return <ProfileSetupScreen onSave={async (data) => { await handleSaveProfile(data); setActiveTab('signals'); }} />;
+    return <ProfileSetupScreen onSave={async (data) => { await handleSaveProfile(data); setActiveTab('signals'); }} showModal={showModal} />;
   }
 
   // 2. Sem parceiro vinculado → app abre normalmente, Vida mostra painel de vínculo
   // (Sem tela bloqueante)
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${fadingOut ? 'fade-out-active' : ''}`}>
+      {fadingOut && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#fff', animation: 'fadeInApp 0.8s ease-in-out forwards' }}>
+           <LoadingScreen message="Sincronizando despedida... ❤️" />
+        </div>
+      )}
       <header className="app-header">
         <h1>Nossos Sinais</h1>
         <div className="header-actions">
-          <button
-            className="lock-btn-header"
-            onClick={handleLock}
-            title="Bloquear app"
-            aria-label="Bloquear"
-          >
-            <Lock size={18} />
-          </button>
+          {currentUser?.lock_enabled && (
+            <button
+              className="lock-btn-header"
+              onClick={handleLock}
+              title="Bloquear app"
+              aria-label="Bloquear"
+            >
+              <Lock size={18} />
+            </button>
+          )}
           <img src="/nosso_mascote_final.png" alt="Logo" style={{ width: '42px', height: '42px', objectFit: 'contain' }} />
         </div>
       </header>
 
       <main className="app-main">
-        {activeTab === 'signals' && (
-          <div className="tab-fade-in dash-layout">
-            <div className="partner-bar" onClick={() => setActiveTab('partner')}>
-              <span className="p-icon">{partnerUser?.icon || '🐨'}</span>
-              <div className="p-text">
-                <span className="p-name">{partnerUser?.nickname || partnerUser?.name || 'Parceiro'}</span>
-                {partnerSignal && <span className="p-status" style={{ color: SIGNALS_MAP[partnerSignal]?.color }}>{SIGNALS_MAP[partnerSignal]?.label}</span>}
+        {showSignalManagerGlobally ? (
+          <div className="tab-fade-in">
+             <SignalManager 
+                signalTypes={signalTypes}
+                onAdd={handleAddSignalType}
+                onSave={handleUpdateSignalType}
+                onDelete={handleDeleteSignalType}
+                onRestore={handleRestoreDefaults}
+                showModal={showModal}
+                onClose={() => setShowSignalManagerGlobally(false)}
+              />
+          </div>
+        ) : (
+          <>
+            {activeTab === 'signals' && (
+              <div className="tab-fade-in dash-layout">
+                <div className="partner-bar" onClick={() => setActiveTab('partner')}>
+                  <span className="p-icon">{partnerUser?.icon || '🐨'}</span>
+                  <div className="p-text">
+                    <span className="p-name">{partnerUser?.nickname || partnerUser?.name || 'Parceiro'}</span>
+                    {partnerSignal && <span className="p-status" style={{ color: SIGNALS_MAP[partnerSignal]?.color }}>{SIGNALS_MAP[partnerSignal]?.label}</span>}
+                  </div>
+                </div>
+                <SignalGrid onSelect={handleSignalSelect} signalTypes={signalTypes} activeSignal={mySignal} />
+                <button className="manage-signals-btn-main" onClick={() => setShowSignalManagerGlobally(true)}>
+                  <Settings size={16} /> <span>Personalizar Sinais</span>
+                </button>
               </div>
-            </div>
-            <SignalGrid onSelect={handleSignalSelect} signalTypes={signalTypes} activeSignal={mySignal} />
-          </div>
-        )}
+            )}
 
-        {activeTab === 'chat' && (
-          <div className="tab-fade-in" style={{ height: '100%' }}>
-            <ChatRoom 
-              conversations={conversations}
-              messages={messages} 
-              onSendMessage={handleSendMessage} 
-              onLoadPrevious={handleLoadPreviousMessages}
-              onCreateConversation={handleCreateConversation}
-              onDeleteConversation={handleDeleteConversation}
-              onUpdateConversation={handleUpdateConversationIcon}
-              currentUserId={currentUser?.id} 
-            />
-          </div>
-        )}
+            {activeTab === 'chat' && (
+              <div className="tab-fade-in" style={{ height: '100%' }}>
+                <ChatRoom
+                  conversations={conversations}
+                  messages={messages}
+                  onSendMessage={handleSendMessage}
+                  onLoadPrevious={handleLoadPreviousMessages}
+                  onCreateConversation={handleCreateConversation}
+                  onDeleteConversation={handleDeleteConversation}
+                  onUpdateConversation={handleUpdateConversationIcon}
+                  currentUserId={currentUser?.id}
+                  showModal={showModal}
+                />
+              </div>
+            )}
 
-        {activeTab === 'perfil' && (
-          <div className="tab-fade-in">
-            <ProfileEditor 
-              profile={currentUser} 
-              onSave={handleSaveProfile} 
-              signalTypes={signalTypes}
-              onAddSignal={handleAddSignalType}
-              onUpdateSignal={handleUpdateSignalType}
-              onDeleteSignal={handleDeleteSignalType}
-              onRestoreSignals={handleRestoreDefaults}
-              onDeleteAccount={handleDeleteAccount}
-              onPairBiometrics={handlePairBiometrics}
-            />
-            <button className="logout-action" onClick={handleLogout}><LogOut size={16} /> Encerrar sessão</button>
-          </div>
-        )}
+            {activeTab === 'perfil' && (
+              <div className="tab-fade-in">
+                <ProfileEditor
+                  profile={currentUser}
+                  onSave={handleSaveProfile}
+                  signalTypes={signalTypes}
+                  onAdd={handleAddSignalType}
+                  onUpdateSignal={handleUpdateSignalType}
+                  onDeleteSignal={handleDeleteSignalType}
+                  onRestoreSignals={handleRestoreDefaults}
+                   onDeleteAccount={handleDeleteAccount}
+                  onPairBiometrics={handlePairBiometrics}
+                  showModal={showModal}
+                />
+                <button className="logout-action" onClick={handleLogout}><LogOut size={16} /> Encerrar sessão</button>
+              </div>
+            )}
 
-        {activeTab === 'partner' && (
-          <div className="tab-fade-in">
-            <PartnerSummary 
-              partner={partnerUser} 
-              signals={signalsHistory.filter(s => s.user_id === currentUser?.partner_id)} 
-              onNudge={handleNudge}
-              userProfile={currentUser}
-              onComplete={() => fetchProfile(currentUser.id)}
-            />
-          </div>
+            {activeTab === 'partner' && (
+              <div className="tab-fade-in">
+                <PartnerSummary
+                  partner={partnerUser}
+                  signals={signalsHistory.filter(s => s.user_id === currentUser?.partner_id)}
+                   onNudge={handleNudge}
+                  userProfile={currentUser}
+                  onComplete={() => { fetchProfile(currentUser.id); setRefreshCounter(prev => prev + 1); }}
+                  showModal={showModal}
+                  refreshCounter={refreshCounter}
+                />
+              </div>
+            )}
+          </>
         )}
       </main>
 
@@ -636,17 +801,33 @@ function App() {
 
       <ToastContainer toasts={toasts} removeToast={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
 
-      {showTour && (
+       {showTour && (
         <WelcomeTour
-          onFinish={() => setShowTour(false)}
+          onFinish={() => {
+            setShowTour(false);
+            localStorage.setItem(`tour_completed_${currentUser.id}`, 'true');
+          }}
           onTabChange={(tab) => setActiveTab(tab)}
           hasPartner={!!currentUser?.partner_id}
+          lockEnabled={!!currentUser?.lock_enabled}
         />
       )}
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        .loading-modern { height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg-primary); color: var(--color-primary); font-weight: 700; }
-        .tab-fade-in { animation: fadeIn 0.4s ease-out; }
+      <CustomModal {...modalConfig} />
+
+      <style dangerouslySetInnerHTML={{
+        __html: `
+        .manage-signals-btn-main {
+          width: 100%; margin-top: 15px; padding: 16px; border-radius: 20px;
+          border: 2px dashed var(--color-accent); background: #fff;
+          color: var(--color-secondary); font-weight: 800; font-size: 0.95rem;
+          display: flex; align-items: center; justify-content: center; gap: 10px;
+          cursor: pointer; transition: all 0.2s;
+        }
+        .manage-signals-btn-main:hover { border-color: var(--color-primary); color: var(--color-primary); }
+        .manage-signals-btn-main:active { transform: scale(0.98); background: var(--bg-primary); }
+
+        .tab-fade-in { animation: fadeInApp 0.4s ease-out; }
         .dash-layout { display: flex; flex-direction: column; gap: 20px; }
         .partner-bar { background: #fff; padding: 16px; border-radius: 20px; border: 1px solid #e5e5d1; display: flex; align-items: center; gap: 15px; cursor: pointer; }
         .p-icon { font-size: 2rem; }
@@ -654,7 +835,8 @@ function App() {
         .p-name { font-weight: 800; font-size: 1rem; color: #334148; }
         .p-status { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
         .logout-action { margin: 40px auto; display: flex; align-items: center; gap: 8px; color: #b56576; font-weight: 700; font-size: 0.9rem; opacity: 0.8; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeInApp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
       `}} />
     </div>
   );

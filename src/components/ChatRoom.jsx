@@ -40,7 +40,8 @@ export function ChatRoom({
   onCreateConversation, 
   onDeleteConversation,
   onUpdateConversation,
-  currentUserId 
+  currentUserId,
+  showModal
 }) {
   const [view, setView] = useState('list'); // 'list' or 'thread'
   const [selectedConv, setSelectedConv] = useState(null);
@@ -154,12 +155,12 @@ export function ChatRoom({
   if (view === 'list') {
     return (
       <div className="chat-viewport-calm">
-        <div className="chat-inbox-header">
+        <div className="chat-inbox-header" id="tour-chat-inbox">
            <div className="inbox-title">
              <MessageCircle size={20} />
              <span>Assuntos do Chat</span>
            </div>
-           <button className="new-chat-btn" onClick={() => setNewTopicMode(true)}>
+           <button className="new-chat-btn" id="tour-new-topic-btn" onClick={() => setNewTopicMode(true)}>
              <Plus size={18} />
              <span>Novo Assunto</span>
            </button>
@@ -219,10 +220,14 @@ export function ChatRoom({
                 </div>
                 {!conv.is_virtual && onDeleteConversation && (
                   <button 
-                    className="delete-conv-btn" 
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
-                      if(confirm('Apagar este assunto e as mensagens?')) onDeleteConversation(conv.id); 
+                    className="delete-conv-btn"
+                    onClick={async () => {
+                      const confirm = await showModal({
+                        title: 'Apagar Conversa?',
+                        message: `Deseja apagar "${conv.title}" e todas as suas mensagens? Esta ação não pode ser desfeita.`,
+                        type: 'confirm'
+                      });
+                      if (confirm) onDeleteConversation(conv.id);
                     }}
                   >
                     <Trash2 size={16} />

@@ -42,10 +42,19 @@ const PASTEL_COLORS = [
   { name: 'Grafite', hex: '#6d6875' }
 ];
 
-export function SignalManager({ signalTypes, onSave, onAdd, onDelete, onRestore, onClose }) {
+export function SignalManager({ signalTypes, onSave, onAdd, onDelete, onRestore, onClose, showModal }) {
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({ label: '', icon_name: 'Smile', color: '#84a98c' });
   const [isAdding, setIsAdding] = useState(false);
+
+  const handleRestore = async () => {
+    const confirm = await showModal({
+      title: 'Restaurar Padrões?',
+      message: 'Isso irá adicionar os 5 sinais originais do app. Deseja continuar?',
+      type: 'confirm'
+    });
+    if (confirm) onRestore();
+  };
 
   const handleStartAdd = () => {
     setFormData({ label: '', icon_name: 'Smile', color: '#84a98c' });
@@ -157,7 +166,7 @@ export function SignalManager({ signalTypes, onSave, onAdd, onDelete, onRestore,
           </button>
           
           <div className="restore-signals-box">
-             <button className="restore-btn-link" onClick={() => { if(confirm('Deseja restaurar os 5 sinais padrão?')) onRestore(); }}>
+             <button className="restore-btn-link" onClick={handleRestore}>
                 <RotateCcw size={14} /> Restaurar Sinais Padrão
              </button>
           </div>

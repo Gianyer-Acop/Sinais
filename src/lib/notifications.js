@@ -61,6 +61,22 @@ export const sendLocalNotification = async (title, body) => {
   }
 };
 
+/**
+ * Envia uma notificação para OUTRO usuário salvando no banco de dados.
+ * O destinatário receberá isso via Realtime no App.jsx.
+ */
+export const sendRemoteNotification = async (supabase, receiverId, senderId, title, body, type = 'nudge') => {
+  const { error } = await supabase.from('notifications').insert({
+    user_id: receiverId,
+    sender_id: senderId,
+    title,
+    body,
+    type
+  });
+  if (error) console.error('Erro ao enviar notificação remota:', error);
+  return !error;
+};
+
 const playSoftSound = () => {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();

@@ -1,58 +1,77 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 // ─── Posição do elemento destacado ──────────────────────────────────────────
-function getHighlightBox(highlight) {
+function getElementForTour(highlight) {
   if (!highlight) return null;
-
-  if (highlight === 'signal-editor') {
-    const el = document.getElementById('tour-signal-editor');
-    if (el) { const r = el.getBoundingClientRect(); return { top: r.top, left: r.left, width: r.width, height: r.height }; }
-    return null;
-  }
-  if (highlight === 'connection-code') {
-    const el = document.getElementById('tour-connection-code');
-    if (el) { const r = el.getBoundingClientRect(); return { top: r.top, left: r.left, width: r.width, height: r.height }; }
-    return null;
-  }
-  if (highlight === 'lock') {
-    const btn = document.querySelector('.lock-btn-header');
-    if (btn) { const r = btn.getBoundingClientRect(); return { top: r.top, left: r.left, width: r.width, height: r.height }; }
-    return null;
-  }
+  if (highlight === 'signal-editor') return document.getElementById('tour-signal-editor');
+  if (highlight === 'connection-code') return document.getElementById('tour-connection-code');
+  if (highlight === 'biometrics') return document.getElementById('tour-biometrics');
+  if (highlight === 'lock') return document.querySelector('.lock-btn-header');
+  
   const navMap = { signals: 0, chat: 1, partner: 2, perfil: 3 };
   if (navMap[highlight] !== undefined) {
     const btns = document.querySelectorAll('.app-nav button');
-    const btn = btns[navMap[highlight]];
-    if (btn) { const r = btn.getBoundingClientRect(); return { top: r.top, left: r.left, width: r.width, height: r.height }; }
+    return btns[navMap[highlight]];
   }
   return null;
 }
 
-// ─── Passos (sem o "Pronto!" – o modal faz esse papel) ──────────────────────
-function buildSteps(hasPartner) {
+function getHighlightBox(highlight) {
+  const el = getElementForTour(highlight);
+  if (el) {
+    const r = el.getBoundingClientRect();
+    return { top: r.top, left: r.left, width: r.width, height: r.height };
+  }
+  return null;
+}
+
+function buildSteps(hasPartner, lockEnabled) {
   const steps = [
-    { icon: '🦦', title: 'Olá! Bem-vindos!', description: 'Um cantinho só de vocês dois. Vou te mostrar rapidinho como funciona! 💚', highlight: null, tab: null, arrowDir: null },
-    { icon: '⚡', title: 'Sinais', description: 'Toque em um sentimento para avisar seu amor como você está — sem precisar escrever nada.', highlight: 'signals', tab: 'signals', arrowDir: 'down' },
-    { icon: '💬', title: 'Chat', description: 'Crie assuntos e troque mensagens organizadas. No tempo de vocês, com calma.', highlight: 'chat', tab: 'chat', arrowDir: 'down' },
-    { icon: '🌿', title: 'Vida', description: hasPartner ? 'Veja o estado atual do seu amor e envie um carinho com um toque.' : 'Aqui você vincula seu app com o do seu amor. Compartilhe o seu código ou insira o dele!', highlight: 'partner', tab: 'partner', arrowDir: 'down' },
+    { 
+      icon: '🦦', 
+      title: hasPartner ? 'Sejam bem-vindos!' : 'Bem-vinda(o) ao Refúgio!', 
+      description: hasPartner 
+        ? 'Este é o cantinho secreto que vocês dois compartilham. Vou te mostrar rapidinho como manter a conexão viva! 💚' 
+        : 'Este será o cantinho secreto de vocês. Primeiro, vamos aprender a usar o app enquanto você se conecta com seu amor! ✨', 
+      highlight: null, tab: null, arrowDir: null 
+    },
+    { icon: '⚡', title: 'Sinais de Emoção', description: 'Toque em um sentimento para avisar seu amor como você está — sem precisar digitar uma única palavra.', highlight: 'signals', tab: 'signals', arrowDir: 'down' },
+    { icon: '💬', title: 'Chat Sem Pressão', description: 'Organize suas conversas criando novos tópicos ou use o "Bate-papo" geral para conversas rápidas e diretas.', highlight: 'chat', tab: 'chat', arrowDir: 'down' },
+    { 
+      icon: '🌿', 
+      title: 'Aba Vida', 
+      description: hasPartner 
+        ? 'Aqui mora o coração do app. Veja o estado atual do seu amor e envie um carinho rápido com um toque.' 
+        : 'Aqui é onde a mágica acontece. Por enquanto está vazio, mas logo você verá tudo sobre seu amor aqui!', 
+      highlight: 'partner', tab: 'partner', arrowDir: 'down' 
+    },
   ];
 
   if (!hasPartner) {
-    steps.push({ icon: '🔗', title: 'Seu código de vínculo', description: 'Compartilhe esse código com seu parceiro — ou insira o código dele — para começarem a se conectar.', highlight: 'connection-code', tab: 'partner', arrowDir: 'up' });
+    steps.push({ 
+      icon: '🔗', 
+      title: 'Conectar com seu Amor', 
+      description: 'Copie seu código e envie para ele(a), ou insira o código que ele(a) te mandou para vincularem as contas agora mesmo.', 
+      highlight: 'connection-code', tab: 'partner', arrowDir: 'up' 
+    });
   }
 
   steps.push(
-    { icon: '🙋', title: 'Aba Eu', description: 'Configure seu nome, ícone favorito, tema de cores e PIN de segurança.', highlight: 'perfil', tab: 'perfil', arrowDir: 'down' },
-    { icon: '✨', title: 'Personalizar Sinais', description: 'Toque aqui para criar ou editar seus próprios sentimentos com emojis e cores personalizadas!', highlight: 'signal-editor', tab: 'perfil', arrowDir: 'up' },
-    { icon: '🔒', title: 'Bloquear', description: 'O cadeadinho no topo bloqueia o app sem sair da conta. Só o PIN ou a digital para voltar!', highlight: 'lock', tab: null, arrowDir: 'up' },
+    { icon: '🙋', title: 'Seu Perfil (Aba Eu)', description: 'Personalize seu perfil e configure seu PIN de segurança para manter suas conversas protegidas.', highlight: 'perfil', tab: 'perfil', arrowDir: 'down' },
+    { icon: '✨', title: 'Seus Próprios Sinais', description: 'Você pode criar novos sentimentos com emojis e cores que só vocês dois entendem!', highlight: 'signal-editor', tab: 'perfil', arrowDir: 'up' },
+    { icon: '🔐', title: 'Acesso por Digital', description: 'Ative a opção "Configurar Digital" aqui embaixo para entrar no app sem precisar digitar o seu PIN toda vez! 🛡️', highlight: 'biometrics', tab: 'perfil', arrowDir: 'up' }
   );
+  
+  if (lockEnabled) {
+    steps.push({ icon: '🔒', title: 'Privacidade Total', description: 'Use o cadeado no topo para bloquear o app rapidamente. Só volta com seu PIN ou sua digital já cadastrada!', highlight: 'lock', tab: null, arrowDir: 'up' });
+  }
 
   return steps;
 }
 
 // ─── Componente Principal ────────────────────────────────────────────────────
-export function WelcomeTour({ onFinish, onTabChange, hasPartner = false }) {
-  const TOUR_STEPS = buildSteps(hasPartner);
+export function WelcomeTour({ onFinish, onTabChange, hasPartner = false, lockEnabled = true }) {
+  const TOUR_STEPS = buildSteps(hasPartner, lockEnabled);
 
   const [step, setStep] = useState(0);            // passo atual do CARD
   const [displayStep, setDisplayStep] = useState(0); // passo visível no conteúdo (pode estar atrasado)
@@ -65,9 +84,22 @@ export function WelcomeTour({ onFinish, onTabChange, hasPartner = false }) {
   const isFirst = step === 0;
   const isLast = step === TOUR_STEPS.length - 1;
 
-  // Atualiza a posição do spotlight 150ms após a troca de tab/passo
+  // Atualiza a posição do spotlight e faz o scroll se necessário
   useEffect(() => {
-    const t = setTimeout(() => setHighlight(getHighlightBox(TOUR_STEPS[step]?.highlight)), 200);
+    const highlightId = TOUR_STEPS[step]?.highlight;
+    if (highlightId) {
+      const el = getElementForTour(highlightId);
+      if (el) {
+        // Scroll suave (smooth) conforme solicitado para fluidez
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+
+    // Aumentado para 600ms para aguardar o término do scroll suave antes de posicionar o spotlight
+    const t = setTimeout(() => {
+      const box = getHighlightBox(TOUR_STEPS[step]?.highlight);
+      if (box) setHighlight(box);
+    }, 600);
     return () => clearTimeout(t);
   }, [step]);
 
