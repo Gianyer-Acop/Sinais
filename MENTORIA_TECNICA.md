@@ -87,6 +87,13 @@ Você notou que aparecia um código estranho (ID) no lugar do nome do sinal? Iss
 *   **O Erro:** O "ouvinte" de mensagens (Realtime Listener) tentava traduzir o ID, mas a lista de nomes ainda não tinha chegado do banco de dados.
 *   **A Solução Técnica:** Usamos o `useRef` para manter uma "foto" atualizada de todos os tipos de sinais. Assim, o ouvinte sempre tem acesso à Tradução mais recente, sem precisar esperar o React renderizar a tela.
 
+## 🔄 9. Ciclo de Vida do PWA (Service Workers)
+Por que as atualizações do site às vezes demoram para aparecer no celular?
+
+*   **Cache-First:** Para o App ser rápido e funcionar offline, o navegador salva os arquivos no celular. Ele sempre carrega o que está "guardado" primeiro.
+*   **A "Fila" de Atualização:** Quando você sobe um código novo (Deploy), o navegador baixa os arquivos novos em segredo, mas deixa na reserva (*Waiting*). Ele não troca na hora para não causar erros enquanto você usa o App.
+*   **A Solução "Prompt":** Implementamos um aviso visual: **"Nova versão disponível"**. Quando você clica em "Atualizar Agora", o App envia um comando para o Service Worker assumir o controle imediatamente (*Skip Waiting*) e recarregar a página com o código novo.
+
 ---
 
 > [!TIP]

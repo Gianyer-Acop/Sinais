@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useRegisterSW } from 'virtual:pwa-register/react';
 import { supabase } from './lib/supabaseClient';
 import { SignalGrid } from './components/SignalGrid';
 import { ChatRoom } from './components/ChatRoom';
@@ -76,6 +77,17 @@ function App() {
       localStorage.setItem('app_theme', currentUser.theme_preference);
     }
   }, [currentUser?.theme_preference]);
+
+  const {
+    needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegistered(r) {
+      console.log('SW Registered:', r);
+      // Opcional: checar atualizações a cada hora
+      r && setInterval(() => { r.update() }, 60 * 60 * 1000);
+    },
+  });
 
   const addToast = (title, body, icon) => {
     const id = Date.now();
@@ -757,6 +769,18 @@ function App() {
           <img src="/nosso_mascote_final.png" alt="Logo" style={{ width: '42px', height: '42px', objectFit: 'contain' }} />
         </div>
       </header>
+
+      {needRefresh && (
+        <div className="pwa-update-banner">
+          <div className="update-text">
+            <strong>✨ Nova versão disponível!</strong>
+            <span>Atualize para ter as últimas melhorias.</span>
+          </div>
+          <button className="update-action-btn" onClick={() => updateServiceWorker(true)}>
+             Atualizar Agora
+          </button>
+        </div>
+      )}
 
       <main className="app-main">
         {showSignalManagerGlobally ? (
