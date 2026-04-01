@@ -30,7 +30,8 @@ function App() {
   const [session, setSession] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [partnerUser, setPartnerUser] = useState(null);
-  const [signalsHistory, setSignalsHistory] = useState([]);
+  const signalsHistoryRef = useRef([]);
+  const signalTypesRef = useRef([]);
   const [messages, setMessages] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [signalTypes, setSignalTypes] = useState([]);
@@ -49,10 +50,15 @@ function App() {
   const currentUserRef = useRef(currentUser);
   const partnerIdRef = useRef(currentUser?.partner_id);
 
+  // 0. Sincronizar Refs para uso em Listeners (Realtime)
   useEffect(() => {
     currentUserRef.current = currentUser;
     partnerIdRef.current = currentUser?.partner_id;
   }, [currentUser]);
+
+  useEffect(() => {
+    signalTypesRef.current = signalTypes;
+  }, [signalTypes]);
 
   // 0. Aplicar Tema IMEDIATAMENTE (LocalStorage)
   useEffect(() => {
@@ -217,19 +223,23 @@ function App() {
         });
         setSignalTypes(uniqueTypes);
 
-        // Garantir sinais padrão se a lista estiver realmente vazia
+        // Garantir sinais padrão se a lista estiver realmente vazia (sem sinais próprios e sem sinais do parceiro herdados)
         if (uniqueTypes.length === 0 && currentUser?.id) {
-           console.log("Inicializando sinais padrão para:", currentUser.id);
-           await initializeDefaultSignals(currentUser.id, partnerId);
-           const { data: retry } = await supabase.from('signal_types')
-             .select('*')
-             .or(`created_by.eq.${currentUser.id}${partnerId ? `,created_by.eq.${partnerId}` : ''}`)
-             .order('created_at', { ascending: true });
-           if (retry) {
-              const uniqueRetry = [];
-              const retryLabels = new Set();
-              retry.forEach(r => { if(!retryLabels.has(r.label)) { uniqueRetry.push(r); retryLabels.add(r.label); } });
-              setSignalTypes(uniqueRetry);
+           // Checagem extra no DB para evitar RACE CONDITION
+           const { data: existingCheck } = await supabase.from('signal_types').select('id').eq('created_by', currentUser.id);
+           if (!existingCheck || existingCheck.length === 0) {
+             console.log("Inicializando sinais padrão para:", currentUser.id);
+             await initializeDefaultSignals(currentUser.id, partnerId);
+             const { data: retry } = await supabase.from('signal_types')
+               .select('*')
+               .or(`created_by.eq.${currentUser.id}${partnerId ? `,created_by.eq.${partnerId}` : ''}`)
+               .order('created_at', { ascending: true });
+             if (retry) {
+                const uniqueRetry = [];
+                const retryLabels = new Set();
+                retry.forEach(r => { if(!retryLabels.has(r.label)) { uniqueRetry.push(r); retryLabels.add(r.label); } });
+                setSignalTypes(uniqueRetry);
+             }
            }
         }
       }
@@ -284,16 +294,23 @@ function App() {
       .on('postgres_changes', { event: '*', table: 'signals' }, (p) => {
         console.log("Realtime: Sinal recebido:", p);
         if (p.eventType === 'INSERT') {
+          // Função rápida de mapeamento usando Ref para evitar capturar state antigo no listener
+          const mapSignal = (id) => {
+            const found = signalTypesRef.current.find(t => t.id === id);
+            if (found) return { label: found.label, color: found.color };
+            return SIGNALS_MAP[id] || { label: 'Sinal Enviado', color: 'var(--color-primary)' };
+          };
+
           if (p.new.user_id === pId) {
             setPartnerSignal(p.new.status_id);
-            const signalLabel = SIGNALS_MAP[p.new.status_id]?.label || p.new.status_id;
+            const { label: signalLabel } = mapSignal(p.new.status_id);
             const partnerName = partnerUser?.nickname || partnerUser?.name || 'Seu Amor';
             sendLocalNotification(`Sinal de ${partnerName}`, signalLabel);
             addToast(`Sinal de ${partnerName}`, `Seu amor está: ${signalLabel}`, '🍃');
-            setSignalsHistory(prev => [{ label: signalLabel, color: SIGNALS_MAP[p.new.status_id]?.color || 'var(--color-primary)', timestamp: p.new.created_at, user_id: p.new.user_id }, ...prev].slice(0, 20));
+            setSignalsHistory(prev => [{ label: signalLabel, color: mapSignal(p.new.status_id).color, timestamp: p.new.created_at, user_id: p.new.user_id }, ...prev].slice(0, 20));
           } else if (p.new.user_id === myId) {
             setMySignal(p.new.status_id);
-            const mapped = SIGNALS_MAP[p.new.status_id] || { label: p.new.status_id, color: 'var(--color-primary)' };
+            const mapped = mapSignal(p.new.status_id);
             setSignalsHistory(prev => [{...mapped, timestamp: p.new.created_at, user_id: p.new.user_id}, ...prev].slice(0, 20));
           }
         }
@@ -535,14 +552,28 @@ function App() {
       { label: 'Crise Aguda', icon_name: 'AlertCircle', color: '#ef4444' }
     ];
 
-    for (const s of defaults) {
-      await supabase.from('signal_types').insert({
-        ...s,
-        created_by: userId,
-        partner_id: partnerId
-      });
+    try {
+      // 1. Buscar sinais já existentes para este usuário
+      const { data: existing } = await supabase
+        .from('signal_types')
+        .select('label')
+        .eq('created_by', userId);
+      
+      const existingLabels = new Set((existing || []).map(s => s.label));
+
+      // 2. Inserir apenas os que não existem
+      for (const s of defaults) {
+        if (!existingLabels.has(s.label)) {
+          await supabase.from('signal_types').insert({
+            ...s,
+            created_by: userId,
+            partner_id: partnerId
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao inicializar sinais padrão:", err);
     }
-    // O fetchData cuidará de carregar os novos sinais
   };
 
   const handleRestoreDefaults = async () => {
@@ -731,7 +762,11 @@ function App() {
                   <span className="p-icon">{partnerUser?.icon || '🐨'}</span>
                   <div className="p-text">
                     <span className="p-name">{partnerUser?.nickname || partnerUser?.name || 'Parceiro'}</span>
-                    {partnerSignal && <span className="p-status" style={{ color: SIGNALS_MAP[partnerSignal]?.color }}>{SIGNALS_MAP[partnerSignal]?.label}</span>}
+                    {partnerSignal && (
+                      <span className="p-status" style={{ color: (signalTypes.find(t => t.id === partnerSignal) || SIGNALS_MAP[partnerSignal] || { color: 'var(--color-primary)' }).color }}>
+                        {(signalTypes.find(t => t.id === partnerSignal) || SIGNALS_MAP[partnerSignal] || { label: 'Enviando...' }).label}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <SignalGrid onSelect={handleSignalSelect} signalTypes={signalTypes} activeSignal={mySignal} />
