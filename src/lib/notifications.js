@@ -78,7 +78,7 @@ export const sendRemoteNotification = async (supabase, receiverId, senderId, tit
 };
 
 // CHAVE PÚBLICA VAPID (IDENTIDADE DO APP)
-const VAPID_PUBLIC_KEY = 'BM6k6rYw9Y1P7n8G9_E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1-Vw';
+const VAPID_PUBLIC_KEY = 'BK7a5_Q_vX8S9P7n8G9_E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1Vw';
 
 /**
  * Converte a chave VAPID Base64 para Uint8Array.
