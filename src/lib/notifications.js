@@ -78,7 +78,7 @@ export const sendRemoteNotification = async (supabase, receiverId, senderId, tit
 };
 
 // CHAVE PÚBLICA VAPID (IDENTIDADE DO APP)
-const VAPID_PUBLIC_KEY = 'BM6k6rYw9Y1P7n8G9_E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1';
+const VAPID_PUBLIC_KEY = 'BM6k6rYw9Y1P7n8G9_E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1-Vw';
 
 /**
  * Converte a chave VAPID Base64 para Uint8Array.
@@ -111,11 +111,18 @@ export const subscribeToPushNotifications = async (userId, supabase) => {
     
     // 2. Se não existir, criar uma nova
     if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-      });
-      console.log('Nova subscrição PWA criada!');
+      console.log('Solicitando nova subscrição PWA...');
+      try {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+        alert('🎉 Sucesso! Seu celular foi inscrito para notificações em background.');
+      } catch (subErr) {
+        console.error('Erro ao subscrever Push:', subErr);
+        alert('❌ Erro na inscrição Push: ' + subErr.message);
+        return;
+      }
     }
 
     // 3. Salvar no Supabase no perfil do usuário
@@ -125,10 +132,11 @@ export const subscribeToPushNotifications = async (userId, supabase) => {
       .eq('id', userId);
 
     if (error) throw error;
-    console.log('Subscrição de Push salva com sucesso!');
+    console.log('Subscrição de Push salva no Supabase!');
     
   } catch (err) {
-    console.error('Erro ao inscrever para Push:', err);
+    console.error('Erro crítico ao inscrever para Push:', err);
+    alert('⚠️ Falha crítica: ' + err.message);
   }
 };
 
