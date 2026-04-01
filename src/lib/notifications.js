@@ -77,8 +77,8 @@ export const sendRemoteNotification = async (supabase, receiverId, senderId, tit
   return !error;
 };
 
-// CHAVE PÚBLICA VAPID (IDENTIDADE REAL DO APP - MATEMATICAMENTE VÁLIDA)
-const VAPID_PUBLIC_KEY = 'BMhP78Lz0K9n8G9_E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1Vw';
+// CHAVE PÚBLICA VAPID (IDENTIDADE REAL - EXTRAÍDA MATEMATICAMENTE)
+const VAPID_PUBLIC_KEY = 'BBTNWQcJCboY1aCKaVFi1CObff-1VyGQaYLy5umIleop4OVb31Tx8Krw4iYJmvfcKnY0PAiTwIEOLX6jjnBpPN0';
 
 /**
  * Converte a chave VAPID Base64 para Uint8Array.
