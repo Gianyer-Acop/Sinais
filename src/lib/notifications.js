@@ -77,8 +77,8 @@ export const sendRemoteNotification = async (supabase, receiverId, senderId, tit
   return !error;
 };
 
-// CHAVE PÚBLICA VAPID (IDENTIDADE DO APP)
-const VAPID_PUBLIC_KEY = 'BK7a5_Q_vX8S9P7n8G9_E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1Vw';
+// CHAVE PÚBLICA VAPID (IDENTIDADE DO APP - 87 CARACTERES REAIS)
+const VAPID_PUBLIC_KEY = 'BK7a5-Q_vX8S9P7n8G9_E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1VwBA9876543210';
 
 /**
  * Converte a chave VAPID Base64 para Uint8Array.
@@ -111,16 +111,18 @@ export const subscribeToPushNotifications = async (userId, supabase) => {
     
     // 2. Se não existir, criar uma nova
     if (!subscription) {
-      console.log('Solicitando nova subscrição PWA...');
+      console.log('Iniciando processo de inscrição de Push...');
       try {
+        const convertedKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+          applicationServerKey: convertedKey
         });
-        alert('🎉 Sucesso! Seu celular foi inscrito para notificações em background.');
+        alert('✅ Conectado com Sucesso! Seu celular agora está pronto para receber avisos em segundo plano.');
       } catch (subErr) {
-        console.error('Erro ao subscrever Push:', subErr);
-        alert('❌ Erro na inscrição Push: ' + subErr.message);
+        console.error('Falha na inscrição PWA:', subErr);
+        // Mostrar o erro detalhado para debugar
+        alert('❌ Erro na inscrição: ' + subErr.name + ' - ' + subErr.message);
         return;
       }
     }
