@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useRegisterSW } from 'virtual:pwa-register/react';
 import { supabase } from './lib/supabaseClient';
 import { SignalGrid } from './components/SignalGrid';
 import { ChatRoom } from './components/ChatRoom';
@@ -78,16 +77,50 @@ function App() {
     }
   }, [currentUser?.theme_preference]);
 
-  const {
-    needRefresh: [needRefresh, setNeedRefresh],
-    updateServiceWorker,
-  } = useRegisterSW({
-    onRegistered(r) {
-      console.log('SW Registered:', r);
-      // Opcional: checar atualizações a cada hora
-      r && setInterval(() => { r.update() }, 60 * 60 * 1000);
-    },
-  });
+  const [needRefresh, setNeedRefresh] = useState(false);
+  const swRegistrationRef = useRef(null);
+
+  // Lógica Manual de Detecção de Versão PWA
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      // 1. Verificar se já existe um worker esperando (Waiting)
+      navigator.serviceWorker.getRegistration().then(reg => {
+        if (reg) {
+          swRegistrationRef.current = reg;
+          if (reg.waiting) setNeedRefresh(true);
+          
+          // 2. Escutar por novos workers que cheguem a "Installed"
+          reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            if (newWorker) {
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  setNeedRefresh(true);
+                }
+              });
+            }
+          });
+        }
+      });
+
+      // 3. Quando o novo worker assumir (SKIP_WAITING), recarregar a página
+      let isRefreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (isRefreshing) return;
+        isRefreshing = true;
+        window.location.reload();
+      });
+    }
+  }, []);
+
+  const handleUpdateApp = () => {
+     if (swRegistrationRef.current && swRegistrationRef.current.waiting) {
+        swRegistrationRef.current.waiting.postMessage({ type: 'SKIP_WAITING' });
+     } else {
+        // Fallback: se não estiver waiting por algum motivo, apenas recarrega
+        window.location.reload();
+     }
+  };
 
   const addToast = (title, body, icon) => {
     const id = Date.now();
@@ -776,7 +809,7 @@ function App() {
             <strong>✨ Nova versão disponível!</strong>
             <span>Atualize para ter as últimas melhorias.</span>
           </div>
-          <button className="update-action-btn" onClick={() => updateServiceWorker(true)}>
+          <button className="update-action-btn" onClick={handleUpdateApp}>
              Atualizar Agora
           </button>
         </div>
