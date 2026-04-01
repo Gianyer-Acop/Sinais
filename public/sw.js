@@ -42,3 +42,36 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   }
 });
+
+// ESCUTAR NOTIFICAÇÕES PUSH EM SEGUNDO PLANO (SISTEMA)
+self.addEventListener('push', (event) => {
+  console.log('Push recebido!', event);
+  
+  let data = { title: 'Nossos Sinais 🦦', body: 'Você recebeu um novo sinal!' };
+  try {
+    if (event.data) {
+      data = event.data.json();
+    }
+  } catch (e) {
+    console.warn('Push sem payload JSON, usando default.');
+  }
+
+  const options = {
+    body: data.body,
+    icon: '/nosso_mascote_final.png',
+    badge: '/nosso_mascote_final.png',
+    vibrate: [300, 100, 300],
+    data: {
+      url: '/'
+    },
+    actions: [
+      { action: 'open', title: 'Ver Agora' }
+    ],
+    tag: 'nossos-sinais-push',
+    renotify: true
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});

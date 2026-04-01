@@ -77,6 +77,61 @@ export const sendRemoteNotification = async (supabase, receiverId, senderId, tit
   return !error;
 };
 
+// CHAVE PÚBLICA VAPID (IDENTIDADE DO APP)
+const VAPID_PUBLIC_KEY = 'BM6k6rYw9Y1P7n8G9_E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1B9C7A5vD9i7G3E1';
+
+/**
+ * Converte a chave VAPID Base64 para Uint8Array.
+ */
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+/**
+ * Inscreve o navegador/celular no serviço de PUSH do sistema operacional.
+ */
+export const subscribeToPushNotifications = async (userId, supabase) => {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    console.warn('Push Notifications não são suportadas neste navegador.');
+    return;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    
+    // 1. Tentar obter subscrição existente
+    let subscription = await registration.pushManager.getSubscription();
+    
+    // 2. Se não existir, criar uma nova
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+      console.log('Nova subscrição PWA criada!');
+    }
+
+    // 3. Salvar no Supabase no perfil do usuário
+    const { error } = await supabase
+      .from('profiles')
+      .update({ push_subscription: subscription.toJSON() })
+      .eq('id', userId);
+
+    if (error) throw error;
+    console.log('Subscrição de Push salva com sucesso!');
+    
+  } catch (err) {
+    console.error('Erro ao inscrever para Push:', err);
+  }
+};
+
 const playSoftSound = () => {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();

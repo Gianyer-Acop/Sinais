@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabaseClient';
+import { requestNotificationPermission, sendLocalNotification, subscribeToPushNotifications } from './lib/notifications';
 import { SignalGrid } from './components/SignalGrid';
 import { ChatRoom } from './components/ChatRoom';
 import { ProfileEditor } from './components/ProfileEditor';
@@ -13,7 +14,6 @@ import { LoadingScreen } from './components/LoadingScreen';
 import { WelcomeTour } from './components/WelcomeTour';
 import { CustomModal } from './components/CustomModal';
 import { SignalManager } from './components/SignalManager';
-import { requestNotificationPermission, sendLocalNotification } from './lib/notifications';
 import { User, MessageSquare, Settings, Zap, Heart, LogOut, Lock } from 'lucide-react';
 import './App.css';
 
@@ -174,9 +174,14 @@ function App() {
       }
     });
 
-    requestNotificationPermission();
+    requestNotificationPermission().then(permission => {
+       if (permission === 'granted' && currentUser?.id) {
+          subscribeToPushNotifications(currentUser.id, supabase);
+       }
+    });
+
     return () => subscription.unsubscribe();
-  }, []);
+  }, [currentUser?.id]);
 
   const fetchProfile = async (userId) => {
     if (!userId) { setLoading(false); return; }

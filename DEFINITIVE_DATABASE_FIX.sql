@@ -1,15 +1,14 @@
 -- ==========================================
--- DEFINTIVE DATABASE FIX - NOSSASINAIS
+-- DEFINTIVE DATABASE FIX - NOSSASINAIS (V2 - PUSH & AUTOMATION REVISION)
 -- ==========================================
--- Este script consolida TODA a estrutura do banco de dados.
--- Após rodar este script, você pode apagar todos os outros arquivos .sql.
+-- Este script consolida TODA a estrutura do banco de dados e automação.
 
 BEGIN;
 
--- 1. ESTRUTURA DE TABELAS (Garantir que todas existam)
+-- 1. ESTRUTURA DE TABELAS
 -- --------------------------------------------------
 
--- Tabela de Perfis
+-- Tabela de Perfis (Atualizada com Push)
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
     name TEXT,
@@ -21,8 +20,12 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     lock_enabled BOOLEAN DEFAULT FALSE,
     theme_preference TEXT DEFAULT 'light',
     connection_status TEXT DEFAULT 'none',
+    push_subscription JSONB, -- ADICIONADO PARA PWA PUSH
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Garantir coluna caso a tabela já exista
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS push_subscription JSONB;
 
 -- Tabela de Tipos de Sinais (Personalizados)
 CREATE TABLE IF NOT EXISTS public.signal_types (
@@ -40,11 +43,10 @@ CREATE TABLE IF NOT EXISTS public.signals (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
     receiver_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
-    status_id TEXT NOT NULL, -- Pode ser ID do signal_types ou slug padrão
+    status_id TEXT NOT NULL, 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Garantir que a coluna receiver_id exista em sinais caso a tabela já tenha sido criada antes
 ALTER TABLE public.signals ADD COLUMN IF NOT EXISTS receiver_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
 
 -- Tabela de Mensagens (Chat)
@@ -56,7 +58,6 @@ CREATE TABLE IF NOT EXISTS public.messages (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Garantir que a coluna receiver_id exista caso a tabela já tenha sido criada antes
 ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS receiver_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
 
 -- Tabela de Notificações
@@ -81,7 +82,7 @@ CREATE TABLE IF NOT EXISTS public.conversations (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. CONFIGURAÇÃO DE REALTIME E IDENTIDADE
+-- 2. CONFIGURAÇÃO DE REALTIME
 -- --------------------------------------------------
 DROP PUBLICATION IF EXISTS supabase_realtime;
 CREATE PUBLICATION supabase_realtime FOR TABLE 
@@ -116,7 +117,7 @@ CREATE POLICY "Users can update own profile." ON public.profiles FOR UPDATE USIN
 
 -- Sinais e Tipos
 DROP POLICY IF EXISTS "Partners can view shared signal types" ON public.signal_types;
-CREATE POLICY "Partners can view shared signal types" ON public.signal_types FOR ALL USING (true); -- Simplificado para teste
+CREATE POLICY "Partners can view shared signal types" ON public.signal_types FOR ALL USING (true); 
 
 DROP POLICY IF EXISTS "Manage signals" ON public.signals;
 CREATE POLICY "Manage signals" ON public.signals FOR ALL USING (auth.uid() = user_id OR auth.uid() = receiver_id);
@@ -131,35 +132,45 @@ CREATE POLICY "View own notifications" ON public.notifications FOR SELECT USING 
 DROP POLICY IF EXISTS "Insert notifications" ON public.notifications;
 CREATE POLICY "Insert notifications" ON public.notifications FOR INSERT WITH CHECK (true);
 
--- 4. GATILHOS DE LIMPEZA ATÔMICA (TRICKY PART)
+-- 4. FUNÇÕES DE AUTOMAÇÃO (O CÉREBRO)
 -- --------------------------------------------------
--- Esta função desvincula o sobrevivente e limpa as conversas/sinais quando o parceiro é deletado.
+
+-- A. Gatilho de Limpeza ao Deletar Conta
 CREATE OR REPLACE FUNCTION public.handle_partner_deletion()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- 1. Limpar vínculo do sobrevivente
-    UPDATE public.profiles
-    SET partner_id = NULL, connection_status = 'none'
-    WHERE partner_id = OLD.id;
-
-    -- 2. Limpar mensagens vinculadas ao deletado
+    UPDATE public.profiles SET partner_id = NULL, connection_status = 'none' WHERE partner_id = OLD.id;
     DELETE FROM public.messages WHERE sender_id = OLD.id OR receiver_id = OLD.id;
-    
-    -- 3. Limpar sinais vinculados ao deletado
     DELETE FROM public.signals WHERE user_id = OLD.id OR receiver_id = OLD.id;
-
-    -- 4. Limpar notificações e conversas
     DELETE FROM public.notifications WHERE user_id = OLD.id OR sender_id = OLD.id;
     DELETE FROM public.conversations WHERE created_by = OLD.id OR partner_id = OLD.id;
-
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Ativar gatilho na tabela de perfis
 DROP TRIGGER IF EXISTS on_partner_deleted ON public.profiles;
-CREATE TRIGGER on_partner_deleted
-BEFORE DELETE ON public.profiles
-FOR EACH ROW EXECUTE FUNCTION public.handle_partner_deletion();
+CREATE TRIGGER on_partner_deleted BEFORE DELETE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.handle_partner_deletion();
+
+-- B. Gatilho de Notificação Automática (PUSH INTERNO)
+CREATE OR REPLACE FUNCTION public.notify_partner_of_signal()
+RETURNS TRIGGER AS $$
+DECLARE
+    partner_id_to_notify UUID;
+    sender_name TEXT;
+BEGIN
+    -- Descobrir parceiro e nome
+    SELECT p.partner_id INTO partner_id_to_notify FROM profiles p WHERE p.id = NEW.user_id;
+    SELECT COALESCE(p.nickname, p.name, 'Seu parceiro') INTO sender_name FROM profiles p WHERE p.id = NEW.user_id;
+
+    IF partner_id_to_notify IS NOT NULL THEN
+        INSERT INTO notifications (user_id, sender_id, title, body, type)
+        VALUES (partner_id_to_notify, NEW.user_id, sender_name || ' enviou um sinal', 'Dê uma olhada no status agora.', 'signal');
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_signal_inserted ON public.signals;
+CREATE TRIGGER on_signal_inserted AFTER INSERT ON public.signals FOR EACH ROW EXECUTE FUNCTION public.notify_partner_of_signal();
 
 COMMIT;
