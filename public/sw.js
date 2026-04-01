@@ -34,3 +34,11 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+// ESCUTAR O COMANDO DE ATUALIZAÇÃO (SKIP_WAITING)
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    console.log('SW: Ativando nova versão agora...');
+    self.skipWaiting();
+  }
+});

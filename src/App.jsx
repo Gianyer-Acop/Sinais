@@ -936,6 +936,32 @@ function App() {
         .manage-signals-btn-main:hover { border-color: var(--color-primary); color: var(--color-primary); }
         .manage-signals-btn-main:active { transform: scale(0.98); background: var(--bg-primary); }
 
+        .pwa-update-banner {
+          position: fixed; top: 75px; left: 10px; right: 10px;
+          background: var(--color-primary); color: #fff;
+          padding: 16px; border-radius: 24px; z-index: 10000;
+          display: flex; align-items: center; justify-content: space-between;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+          animation: slideDownUpdate 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          border: 1px solid rgba(255,255,255,0.2);
+        }
+        .update-text { display: flex; flex-direction: column; gap: 2px; }
+        .update-text strong { font-size: 0.9rem; font-weight: 900; }
+        .update-text span { font-size: 0.75rem; opacity: 0.9; font-weight: 600; }
+        .update-action-btn {
+          background: #fff; color: var(--color-primary);
+          border: none; padding: 10px 18px; border-radius: 14px;
+          font-weight: 900; font-size: 0.85rem; cursor: pointer;
+          white-space: nowrap; margin-left: 10px;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.1); transition: transform 0.2s;
+        }
+        .update-action-btn:active { transform: scale(0.92); }
+        
+        @keyframes slideDownUpdate {
+          from { opacity: 0; transform: translateY(-50px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
         .tab-fade-in { animation: fadeInApp 0.4s ease-out; }
         .dash-layout { display: flex; flex-direction: column; gap: 20px; }
         .partner-bar { background: #fff; padding: 16px; border-radius: 20px; border: 1px solid #e5e5d1; display: flex; align-items: center; gap: 15px; cursor: pointer; }

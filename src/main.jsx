@@ -9,11 +9,15 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
-// Registrar Service Worker para PWA e Notificações (Mobile)
+// REGISTRO MANUAL E ROBUSTO DO SERVICE WORKER
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
-      .then(reg => console.log('Service Worker registrado com sucesso!'))
-      .catch(err => console.log('Falha ao registrar Service Worker:', err));
+      .then(reg => {
+        console.log('PWA: Service Worker registrado com sucesso!');
+        // Forçar verificação de update no carregamento
+        reg.update();
+      })
+      .catch(err => console.error('PWA: Falha ao registrar Service Worker:', err));
   });
 }
