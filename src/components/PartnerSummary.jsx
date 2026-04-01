@@ -289,8 +289,11 @@ export function PartnerSummary({ partner, signals, onNudge, userProfile, onCompl
   const [timeElapsed, setTimeElapsed] = useState('');
 
   React.useEffect(() => {
-    const latestSignal = signals[0];
-    if (!latestSignal) return;
+    const latestSignal = signals ? signals[0] : null;
+    if (!latestSignal) {
+      setTimeElapsed('');
+      return;
+    }
     const calculateTime = () => {
       const diff = Date.now() - new Date(latestSignal.timestamp).getTime();
       const mins = Math.floor(diff / 60000);
@@ -373,7 +376,7 @@ export function PartnerSummary({ partner, signals, onNudge, userProfile, onCompl
     return <ConnectionPanel userProfile={userProfile} onComplete={onComplete} showModal={showModal} refreshCounter={refreshCounter} />;
   }
 
-  const latestSignal = signals[0];
+  const latestSignal = (signals && signals.length > 0) ? signals[0] : null;
 
   return (
     <div className="partner-summary-calm">

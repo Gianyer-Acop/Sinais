@@ -40,6 +40,7 @@ function App() {
   const [isLocked, setIsLocked] = useState(localStorage.getItem('app_lock_enabled') === 'true');
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState([]);
+  const [signalsHistory, setSignalsHistory] = useState([]);
   const [showTour, setShowTour] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showSignalManagerGlobally, setShowSignalManagerGlobally] = useState(false);
@@ -134,6 +135,7 @@ function App() {
 
   const fetchProfile = async (userId) => {
     if (!userId) { setLoading(false); return; }
+    setLoading(true);
     try {
       let { data: profile, error } = await supabase
         .from('profiles')
@@ -141,20 +143,31 @@ function App() {
         .eq('id', userId)
         .single();
 
+      // Caso 1: Usuário autênticado mas Sem Perfil (ex: conta deletada em outro device)
       if (error && error.code === 'PGRST116') {
+        console.log("Perfil não encontrado. Tentando recriar para:", userId);
         const { data: { user } } = await supabase.auth.getUser();
         const codeFromMeta = user?.user_metadata?.connection_code || Math.floor(100000 + Math.random() * 900000).toString();
+        
         const { data: newProfile, error: insError } = await supabase
           .from('profiles')
           .insert({ id: userId, connection_code: codeFromMeta })
           .select()
           .single();
-        if (insError) throw insError;
+          
+        if (insError) {
+           console.error("Erro ao recriar perfil:", insError);
+           // Se não conseguir criar o perfil, forçamos logout para não travar no loading
+           await supabase.auth.signOut();
+           return;
+        }
         profile = newProfile;
         await initializeDefaultSignals(userId);
       } else if (error) {
         console.error("Erro ao buscar perfil:", error);
+        // Erros de conexão ou outros: não travamos se houver falha crítica
       } else if (profile && !profile.connection_code) {
+        // Garantir código de conexão
         const { data: { user } } = await supabase.auth.getUser();
         const codeFromMeta = user?.user_metadata?.connection_code || Math.floor(100000 + Math.random() * 900000).toString();
         const { data: updatedProfile } = await supabase
@@ -168,9 +181,13 @@ function App() {
 
       if (profile) {
         setCurrentUser(profile);
+      } else {
+        // Se após tudo isso não temos perfil, deslogamos
+        console.warn("Sessão sem perfil e falha na criação. Deslogando...");
+        await supabase.auth.signOut();
       }
     } catch (err) {
-      console.error("Erro crítico no perfil:", err);
+      console.error("Erro crítico no fetchProfile:", err);
     } finally {
       setLoading(false);
     }
