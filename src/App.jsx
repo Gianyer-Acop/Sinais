@@ -226,10 +226,13 @@ function App() {
 
       if (profile) {
         setCurrentUser(profile);
-      } else {
-        // Se após tudo isso não temos perfil, deslogamos
-        console.warn("Sessão sem perfil e falha na criação. Deslogando...");
-        await supabase.auth.signOut();
+      } else if (error && error.code === 'PGRST116') {
+        // Se chegamos aqui, é porque o PGRST116 foi tratado lá em cima 
+        // e mesmo assim não temos um profile (ex: erro na inserção).
+        // O signOut já foi chamado dentro do bloco de insError, então não fazemos nada.
+      } else if (error) {
+        // Erro de rede ou servidor: NÃO deslogar, apenas manter o estado atual
+        console.warn("Falha na comunicação com o servidor. Mantendo sessão atual.");
       }
     } catch (err) {
       console.error("Erro crítico no fetchProfile:", err);
