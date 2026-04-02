@@ -43,11 +43,10 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// ESCUTAR NOTIFICAÇÕES PUSH EM SEGUNDO PLANO (SISTEMA)
 self.addEventListener('push', (event) => {
-  console.log('SW: Notificação PUSH detectada no fundo.');
-  
   const promise = (async () => {
+    console.log('SW: Push detectado no fundo (V.33)');
+
     let title = 'Nossos Sinais 🦦';
     let body = 'Seu amor te enviou um sinal especial.';
     
@@ -58,22 +57,37 @@ self.addEventListener('push', (event) => {
         body = data.body || body;
       }
     } catch (e) {
-      console.warn('SW: Usando fallback devido a erro de descompactação.');
+      console.warn('SW: Usando fallback padrão.');
     }
 
-    // A mágica: mostrar a notificação IMEDIATAMENTE
-    return self.registration.showNotification(title, {
+    const options = {
       body: body,
       icon: '/nosso_mascote_final.png',
       badge: '/nosso_mascote_final.png',
-      vibrate: [500, 110, 500, 110, 450, 110, 200, 110, 170, 40, 450, 110, 200, 110, 170, 40], // Ritmo de "Alerta de Amor"
+      vibrate: [500, 100, 500, 100, 500],
       tag: 'nossos-sinais-push',
       renotify: true,
-      requireInteraction: true, // A notificação fica na tela até o parceiro clicar
+      requireInteraction: true,
+      actions: [
+        { action: 'open', title: 'Ver Agora 📱' },
+        { action: 'love', title: 'Mandar Carinho ❤️' }
+      ],
       data: { url: self.location.origin }
-    });
+    };
+
+    return self.registration.showNotification(title, options);
   })();
 
-  // ESSENCIAL: Mantém o SW vivo até a notificação ser exibida
   event.waitUntil(promise);
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  
+  if (event.action === 'love') {
+    // Aqui poderíamos abrir uma URL específica para mandar carinho rápido
+    event.waitUntil(clients.openWindow('/?action=love'));
+  } else {
+    event.waitUntil(clients.openWindow('/'));
+  }
 });

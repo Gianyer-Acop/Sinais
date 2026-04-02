@@ -256,11 +256,25 @@ function App() {
   };
 
   useEffect(() => {
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
         console.log('App: Voltando ao foco - Sincronizando tudo...');
-        fetchProfile(session?.user?.id);
-        setRefreshCounter(prev => prev + 1); // Força o refresh do histórico de sinais
+        
+        const oldPartnerSignal = JSON.parse(localStorage.getItem('cache_partner_signal'));
+        await fetchProfile(session?.user?.id);
+        setRefreshCounter(prev => prev + 1);
+
+        // Lógica de Catch-up: verificar se houve mudança enquanto estava fora
+        setTimeout(() => {
+          const newPartnerSignal = partnerSignal;
+          if (newPartnerSignal && newPartnerSignal !== oldPartnerSignal) {
+             const signalType = signalTypes.find(t => t.id === newPartnerSignal) || SIGNALS_MAP[newPartnerSignal];
+             if (signalType) {
+               addToast("Sinal Recebido!", `Seu amor enviou: ${signalType.label}`, '✨');
+               localStorage.setItem('cache_partner_signal', JSON.stringify(newPartnerSignal));
+             }
+          }
+        }, 1500); // Aguarda o fetch completar
       }
     };
 
