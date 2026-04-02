@@ -200,6 +200,19 @@ export function ProfileEditor({
            <button type="button" className="sys-btn-calm" id="tour-biometrics" onClick={onPairBiometrics}>
              <Fingerprint size={16} /> Configurar Digital / FaceID
            </button>
+           <button type="button" className="sys-btn-calm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }} onClick={() => {
+             if (Notification.permission === 'granted') {
+               new Notification('Teste de Vibração 🦦', {
+                 body: 'Se você viu isso, o sistema de alertas está funcionando!',
+                 vibrate: [200, 100, 200]
+               });
+               showModal({ title: 'Enviado!', message: 'O alerta de teste foi enviado para o seu sistema.', type: 'success' });
+             } else {
+               showModal({ title: 'Sem Permissão', message: 'Ative as notificações acima antes de testar.', type: 'error' });
+             }
+           }}>
+             <Bell size={16} /> Testar Alerta Local (Vibração)
+           </button>
            <p className="sys-hint-calm">Ative para entrar no app sem precisar digitar o PIN.</p>
         </div>
 
