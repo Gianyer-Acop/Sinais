@@ -490,6 +490,41 @@ function App() {
   };
   const handleLogout = async () => { await supabase.auth.signOut(); localStorage.removeItem('last_unlock'); setIsLocked(true); setIsDeleting(false); };
 
+  const handleCalibrateNotifications = async () => {
+    if (!('serviceWorker' in navigator)) {
+      showModal({ title: 'Indisponível', message: 'Seu navegador não suporta Service Workers.', type: 'error' });
+      return;
+    }
+    
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      if (registration) {
+        // Enviar notificação de teste idêntica à real (v34)
+        await registration.showNotification('🚀 Calibração de Sinais', {
+          body: 'Sinal de teste enviado! Agora vá nas configurações do celular e ative: "Exibir na tela" e "Vibração".',
+          icon: '/nosso_mascote_final.png',
+          badge: '/nosso_mascote_final.png',
+          vibrate: [500, 100, 500],
+          tag: 'sinais-alerta-v34', 
+          renotify: true,
+          priority: 'max',
+          requireInteraction: true,
+          actions: [
+            { action: 'open', title: 'Abrir App 📱' }
+          ]
+        });
+        showModal({ 
+          title: 'Sinal de Teste Enviado!', 
+          message: 'Assim que a notificação aparecer por cima, clique nela ou vá nas "Configurações do App" para ligar a vibração que o Android liberou agora.', 
+          type: 'success' 
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      showModal({ title: 'Erro', message: 'Não foi possível calibrar agora.', type: 'error' });
+    }
+  };
+
   const handleSignalSelect = async (statusId) => {
     // GESTO DO USUÁRIO: "Acordar" o motor de vibração
     if (navigator.vibrate) {
@@ -952,8 +987,9 @@ function App() {
                   onDeleteSignal={handleDeleteSignalType}
                   onRestoreSignals={handleRestoreDefaults}
                    onDeleteAccount={handleDeleteAccount}
-                  onPairBiometrics={handlePairBiometrics}
-                  showModal={showModal}
+                   onPairBiometrics={handlePairBiometrics}
+                   onCalibrateNotifications={handleCalibrateNotifications}
+                   showModal={showModal}
                 />
                 <button className="logout-action" onClick={handleLogout}><LogOut size={16} /> Encerrar sessão</button>
               </div>
