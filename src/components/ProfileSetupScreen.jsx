@@ -12,14 +12,11 @@ export function ProfileSetupScreen({ onSave, showModal }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.name.trim()) {
-      showModal({ 
-        title: 'Campo Obrigatório', 
-        message: "Por favor, digite seu nome para que seu parceiro te identifique.", 
-        type: 'info' 
-      });
-      return;
-    }
+    // GESTO DO USUÁRIO: Solicitar permissão ao continuar
+    Notification.requestPermission().then(permission => {
+      console.log('Setup: Permissão de notificação solicitada via clique:', permission);
+    });
+    
     onSave(formData);
   };
 

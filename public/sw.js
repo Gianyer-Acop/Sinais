@@ -45,9 +45,9 @@ self.addEventListener('message', (event) => {
 
 // ESCUTAR NOTIFICAÇÕES PUSH EM SEGUNDO PLANO (SISTEMA)
 self.addEventListener('push', (event) => {
+  console.log('SW: Notificação PUSH detectada no fundo.');
+  
   const promise = (async () => {
-    console.log('SW: Push recebido no fundo!', event);
-
     let title = 'Nossos Sinais 🦦';
     let body = 'Seu amor te enviou um sinal especial.';
     
@@ -58,21 +58,22 @@ self.addEventListener('push', (event) => {
         body = data.body || body;
       }
     } catch (e) {
-      console.warn('SW: Usando fallback padrão devido a erro no JSON ou criptografia.');
+      console.warn('SW: Usando fallback devido a erro de descompactação.');
     }
 
-    const options = {
+    // A mágica: mostrar a notificação IMEDIATAMENTE
+    return self.registration.showNotification(title, {
       body: body,
       icon: '/nosso_mascote_final.png',
       badge: '/nosso_mascote_final.png',
-      vibrate: [300, 100, 300, 100, 300],
+      vibrate: [500, 110, 500, 110, 450, 110, 200, 110, 170, 40, 450, 110, 200, 110, 170, 40], // Ritmo de "Alerta de Amor"
       tag: 'nossos-sinais-push',
       renotify: true,
+      requireInteraction: true, // A notificação fica na tela até o parceiro clicar
       data: { url: self.location.origin }
-    };
-
-    return self.registration.showNotification(title, options);
+    });
   })();
 
+  // ESSENCIAL: Mantém o SW vivo até a notificação ser exibida
   event.waitUntil(promise);
 });

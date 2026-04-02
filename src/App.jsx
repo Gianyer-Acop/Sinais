@@ -28,8 +28,14 @@ const SIGNALS_MAP = {
 function App() {
   const [activeTab, setActiveTab] = useState('signals');
   const [session, setSession] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [partnerUser, setPartnerUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('cache_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [partnerUser, setPartnerUser] = useState(() => {
+    const saved = localStorage.getItem('cache_partner');
+    return saved ? JSON.parse(saved) : null;
+  });
   const signalsHistoryRef = useRef([]);
   const signalTypesRef = useRef([]);
   const [messages, setMessages] = useState([]);
@@ -38,7 +44,7 @@ function App() {
   const [mySignal, setMySignal] = useState(null);
   const [partnerSignal, setPartnerSignal] = useState(null);
   const [isLocked, setIsLocked] = useState(localStorage.getItem('app_lock_enabled') === 'true');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!localStorage.getItem('cache_user')); // Só mostra loading se não houver cache
   const [toasts, setToasts] = useState([]);
   const [signalsHistory, setSignalsHistory] = useState([]);
   const [showTour, setShowTour] = useState(false);
@@ -180,13 +186,7 @@ function App() {
       }
     });
 
-    requestNotificationPermission().then(async permission => {
-       if (permission === 'granted' && currentUser?.id) {
-          console.log('App: Permissão concedida. Registrando subscrição...');
-          await subscribeToPushNotifications(currentUser.id, supabase);
-          localStorage.setItem('push_subscription_active', 'true');
-       }
-    });
+    // A permissão agora é solicitada via GESTO DO USUÁRIO no login/cadastro/setup
 
     return () => subscription.unsubscribe();
   }, [currentUser?.id]);
@@ -239,6 +239,7 @@ function App() {
 
       if (profile) {
         setCurrentUser(profile);
+        localStorage.setItem('cache_user', JSON.stringify(profile));
       } else if (error && error.code === 'PGRST116') {
         // Se chegamos aqui, é porque o PGRST116 foi tratado lá em cima 
         // e mesmo assim não temos um profile (ex: erro na inserção).
@@ -257,13 +258,30 @@ function App() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('App visível - Atualizando conexão...');
+        console.log('App: Voltando ao foco - Sincronizando tudo...');
         fetchProfile(session?.user?.id);
+        setRefreshCounter(prev => prev + 1); // Força o refresh do histórico de sinais
       }
     };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    const handleOnline = () => {
+      addToast("Conectado!", "Sincronizando sinais perdidos... 🍃", '🌐');
+      setRefreshCounter(prev => prev + 1);
+    };
+
+    const handleOffline = () => {
+      addToast("Sem Internet", "Você está offline. Os sinais serão entregues assim que voltar.", '⚠️');
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, [session?.user?.id]);
 
   useEffect(() => {
@@ -274,9 +292,13 @@ function App() {
       
       if (partnerId) {
         const { data: partner } = await supabase.from('profiles').select('*').eq('id', partnerId).single();
-        if (partner) setPartnerUser(partner);
+        if (partner) {
+          setPartnerUser(partner);
+          localStorage.setItem('cache_partner', JSON.stringify(partner));
+        }
       } else {
         setPartnerUser(null);
+        localStorage.removeItem('cache_partner');
         setPartnerSignal(null);
       }
 
@@ -455,6 +477,11 @@ function App() {
   const handleLogout = async () => { await supabase.auth.signOut(); localStorage.removeItem('last_unlock'); setIsLocked(true); setIsDeleting(false); };
 
   const handleSignalSelect = async (statusId) => {
+    // GESTO DO USUÁRIO: "Acordar" o motor de vibração
+    if (navigator.vibrate) {
+      navigator.vibrate([10, 30, 10]);
+    }
+    
     try {
       const { error } = await supabase.from('signals').insert({
         user_id: currentUser?.id,

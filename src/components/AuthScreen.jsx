@@ -15,6 +15,10 @@ export function AuthScreen({ onAuthSuccess, showModal }) {
     setError(null);
 
     try {
+      // PEDIDO DE GESTO: Solicitar permissão de notificação no momento do clique
+      const permission = await Notification.requestPermission();
+      console.log('Auth: Permissão de notificação solicitada via clique:', permission);
+
       if (isLogin) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
