@@ -45,37 +45,34 @@ self.addEventListener('message', (event) => {
 
 // ESCUTAR NOTIFICAÇÕES PUSH EM SEGUNDO PLANO (SISTEMA)
 self.addEventListener('push', (event) => {
-  console.log('SW: Push Evento Disparado!');
-  
-  // DICA DO MENTOR: Este fallback garante que vejamos algo mesmo se a criptografia falhar.
-  const title = 'Gian enviou um sinal 🦦';
-  let body = 'O sinal está sendo processado...';
-  
-  try {
-    if (event.data) {
-      const data = event.data.json();
-      body = data.body || body;
+  const promise = (async () => {
+    console.log('SW: Push recebido no fundo!', event);
+
+    let title = 'Nossos Sinais 🦦';
+    let body = 'Seu amor te enviou um sinal especial.';
+    
+    try {
+      if (event.data) {
+        const data = event.data.json();
+        title = data.title || title;
+        body = data.body || body;
+      }
+    } catch (e) {
+      console.warn('SW: Usando fallback padrão devido a erro no JSON ou criptografia.');
     }
-  } catch (e) {
-    console.warn('SW: Erro ao ler payload (Criptografia pode estar ok, mas o JSON falhou)');
-  }
 
-  const options = {
-    body: data.body,
-    icon: '/nosso_mascote_final.png',
-    badge: '/nosso_mascote_final.png',
-    vibrate: [300, 100, 300],
-    data: {
-      url: '/'
-    },
-    actions: [
-      { action: 'open', title: 'Ver Agora' }
-    ],
-    tag: 'nossos-sinais-push',
-    renotify: true
-  };
+    const options = {
+      body: body,
+      icon: '/nosso_mascote_final.png',
+      badge: '/nosso_mascote_final.png',
+      vibrate: [300, 100, 300, 100, 300],
+      tag: 'nossos-sinais-push',
+      renotify: true,
+      data: { url: self.location.origin }
+    };
 
-  event.waitUntil(
-    self.registration.showNotification(data.title, options)
-  );
+    return self.registration.showNotification(title, options);
+  })();
+
+  event.waitUntil(promise);
 });

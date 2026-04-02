@@ -180,9 +180,11 @@ function App() {
       }
     });
 
-    requestNotificationPermission().then(permission => {
+    requestNotificationPermission().then(async permission => {
        if (permission === 'granted' && currentUser?.id) {
-          subscribeToPushNotifications(currentUser.id, supabase);
+          console.log('App: Permissão concedida. Registrando subscrição...');
+          await subscribeToPushNotifications(currentUser.id, supabase);
+          localStorage.setItem('push_subscription_active', 'true');
        }
     });
 
