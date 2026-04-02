@@ -45,15 +45,19 @@ self.addEventListener('message', (event) => {
 
 // ESCUTAR NOTIFICAÇÕES PUSH EM SEGUNDO PLANO (SISTEMA)
 self.addEventListener('push', (event) => {
-  console.log('Push recebido!', event);
+  console.log('SW: Push Evento Disparado!');
   
-  let data = { title: 'Nossos Sinais 🦦', body: 'Você recebeu um novo sinal!' };
+  // DICA DO MENTOR: Este fallback garante que vejamos algo mesmo se a criptografia falhar.
+  const title = 'Gian enviou um sinal 🦦';
+  let body = 'O sinal está sendo processado...';
+  
   try {
     if (event.data) {
-      data = event.data.json();
+      const data = event.data.json();
+      body = data.body || body;
     }
   } catch (e) {
-    console.warn('Push sem payload JSON, usando default.');
+    console.warn('SW: Erro ao ler payload (Criptografia pode estar ok, mas o JSON falhou)');
   }
 
   const options = {
