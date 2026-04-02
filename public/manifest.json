@@ -1,6 +1,7 @@
 {
   "short_name": "Nossos Sinais",
   "name": "Nossos Sinais - Conexão e Afeto",
+  "description": "Seu espaço seguro para conexão e afeto.",
   "icons": [
     {
       "src": "nosso_mascote_final.png",
@@ -16,6 +17,7 @@
   ],
   "start_url": ".",
   "display": "standalone",
+  "orientation": "portrait",
   "theme_color": "#84a98c",
   "background_color": "#ffffff"
 }

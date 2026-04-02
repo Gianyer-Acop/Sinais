@@ -1,51 +1,55 @@
-// Service Worker - Nossos Sinais (V19.7)
-const CACHE_NAME = 'nossos-sinais-v2';
+const CACHE_NAME = 'nosso-sinal-v34';
+const ASSETS = [
+  '/',
+  '/index.html',
+  '/nosso_mascote_final.png',
+  '/manifest.json'
+];
 
 self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      console.log('SW: Cache Aberto');
+      return cache.addAll(ASSETS);
+    })
+  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.map((key) => {
+          if (key !== CACHE_NAME) return caches.delete(key);
+        })
+      );
+    })
+  );
+  self.clients.claim();
 });
 
-// Estratégia: Network First (sempre tenta buscar do servidor)
 self.addEventListener('fetch', (event) => {
-  // Ignora requisições não-GET e do Supabase/API
-  if (event.request.method !== 'GET' || event.request.url.includes('supabase')) {
+  if (event.request.mode === 'navigate') {
+    event.respondWith(fetch(event.request).catch(() => caches.match('/')));
     return;
   }
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
-  );
-});
-
-// Notificações via Push (enviadas pelo showNotification do app principal)
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Se o app já está aberto, focar nele
-      for (const client of clientList) {
-        if ('focus' in client) return client.focus();
-      }
-      // Senão, abrir uma nova aba
-      if (clients.openWindow) return clients.openWindow('/');
+    caches.match(event.request).then((response) => {
+      return response || fetch(event.request);
     })
   );
 });
 
-// ESCUTAR O COMANDO DE ATUALIZAÇÃO (SKIP_WAITING)
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
-    console.log('SW: Ativando nova versão agora...');
     self.skipWaiting();
   }
 });
 
 self.addEventListener('push', (event) => {
   const promise = (async () => {
-    console.log('SW: Push detectado no fundo (V.33)');
+    console.log('SW: Push detectado no fundo (V.34)');
 
     let title = 'Nossos Sinais 🦦';
     let body = 'Seu amor te enviou um sinal especial.';
@@ -64,10 +68,11 @@ self.addEventListener('push', (event) => {
       body: body,
       icon: '/nosso_mascote_final.png',
       badge: '/nosso_mascote_final.png',
-      vibrate: [500, 100, 500, 100, 500],
-      tag: 'nossos-sinais-push',
+      vibrate: [500, 100, 500],
+      tag: 'sinais-alerta-v34', // NOVA TAG: Força o Android a resetar a categoria
       renotify: true,
       requireInteraction: true,
+      priority: 'max',
       actions: [
         { action: 'open', title: 'Ver Agora 📱' },
         { action: 'love', title: 'Mandar Carinho ❤️' }
@@ -83,9 +88,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  
   if (event.action === 'love') {
-    // Aqui poderíamos abrir uma URL específica para mandar carinho rápido
     event.waitUntil(clients.openWindow('/?action=love'));
   } else {
     event.waitUntil(clients.openWindow('/'));
