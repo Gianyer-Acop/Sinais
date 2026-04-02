@@ -83,31 +83,37 @@ function App() {
   // Lógica Manual de Detecção de Versão PWA
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      // 1. Verificar se já existe um worker esperando (Waiting)
-      navigator.serviceWorker.getRegistration().then(reg => {
-        if (reg) {
-          swRegistrationRef.current = reg;
-          if (reg.waiting) setNeedRefresh(true);
-          
-          // 2. Escutar por novos workers que cheguem a "Installed"
-          reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing;
-            if (newWorker) {
-              newWorker.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  setNeedRefresh(true);
-                }
-              });
-            }
-          });
+      console.log('SW: Iniciando registro...');
+      navigator.serviceWorker.register('/sw.js').then(reg => {
+        console.log('SW: Registrado com sucesso!', reg.scope);
+        swRegistrationRef.current = reg;
+        
+        if (reg.waiting) {
+          console.log('SW: Há uma nova versão esperando.');
+          setNeedRefresh(true);
         }
+
+        reg.addEventListener('updatefound', () => {
+          console.log('SW: Nova versão encontrada instalando...');
+          const newWorker = reg.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('SW: Nova versão pronta para assumir.');
+                setNeedRefresh(true);
+              }
+            });
+          }
+        });
+      }).catch(err => {
+        console.error('SW: Erro ao registrar:', err);
       });
 
-      // 3. Quando o novo worker assumir (SKIP_WAITING), recarregar a página
       let isRefreshing = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (isRefreshing) return;
         isRefreshing = true;
+        console.log('SW: Controlador mudou. Recarregando...');
         window.location.reload();
       });
     }
@@ -851,6 +857,24 @@ function App() {
                     )}
                   </div>
                 </div>
+
+                {(!localStorage.getItem('push_subscription_active') || Notification.permission !== 'granted') && (
+                  <div className="activation-card-urgent" onClick={async () => {
+                    const permission = await requestNotificationPermission();
+                    if (permission === 'granted' && currentUser?.id) {
+                      await subscribeToPushNotifications(currentUser.id, supabase);
+                      localStorage.setItem('push_subscription_active', 'true');
+                      setRefreshCounter(prev => prev + 1);
+                    }
+                  }}>
+                    <div className="act-icon">🔔</div>
+                    <div className="act-content">
+                       <strong>Ativar Alertas Push</strong>
+                       <p>Clique aqui para receber os sinais do seu amor mesmo com o app fechado.</p>
+                    </div>
+                  </div>
+                )}
+
                 <SignalGrid onSelect={handleSignalSelect} signalTypes={signalTypes} activeSignal={mySignal} />
                 <button className="manage-signals-btn-main" onClick={() => setShowSignalManagerGlobally(true)}>
                   <Settings size={16} /> <span>Personalizar Sinais</span>
@@ -978,6 +1002,18 @@ function App() {
         .p-name { font-weight: 800; font-size: 1rem; color: #334148; }
         .p-status { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
         .logout-action { margin: 40px auto; display: flex; align-items: center; gap: 8px; color: #b56576; font-weight: 700; font-size: 0.9rem; opacity: 0.8; }
+        
+        .activation-card-urgent {
+          background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+          color: #fff; padding: 20px; border-radius: 24px; display: flex; align-items: center; gap: 15px;
+          cursor: pointer; box-shadow: 0 8px 25px rgba(0,0,0,0.1); transition: all 0.2s;
+          margin-bottom: 5px; border: 2px solid rgba(255,255,255,0.2);
+        }
+        .activation-card-urgent:active { transform: scale(0.96); }
+        .act-icon { font-size: 2rem; background: rgba(255,255,255,0.2); width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; border-radius: 15px; }
+        .act-content strong { display: block; font-size: 1.1rem; margin-bottom: 2px; }
+        .act-content p { font-size: 0.8rem; opacity: 0.9; line-height: 1.3; font-weight: 600; }
+
         @keyframes fadeInApp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
       `}} />
