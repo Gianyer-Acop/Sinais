@@ -510,37 +510,33 @@ function App() {
   const handleLogout = async () => { await supabase.auth.signOut(); localStorage.removeItem('last_unlock'); setIsLocked(true); setIsDeleting(false); };
 
   const handleCalibrateNotifications = async () => {
-    if (!('serviceWorker' in navigator)) {
-      showModal({ title: 'Indisponível', message: 'Seu navegador não suporta Service Workers.', type: 'error' });
-      return;
-    }
-    
     try {
-      const registration = await navigator.serviceWorker.ready;
-      if (registration) {
-        // Enviar notificação de teste idêntica à real (v34)
-        await registration.showNotification('🚀 Calibração de Sinais', {
-          body: 'Sinal de teste enviado! Agora vá nas configurações do celular e ative: "Exibir na tela" e "Vibração".',
-          icon: '/nosso_mascote_final.png',
-          badge: '/nosso_mascote_final.png',
-          vibrate: [500, 100, 500],
-          tag: 'sinais-alerta-v34', 
-          renotify: true,
-          priority: 'max',
-          requireInteraction: true,
-          actions: [
-            { action: 'open', title: 'Abrir App 📱' }
-          ]
-        });
+      // Pede permissão primeiro (funciona tanto no Web quanto no APK)
+      const permission = await requestNotificationPermission();
+      
+      if (permission !== 'granted') {
         showModal({ 
-          title: 'Sinal de Teste Enviado!', 
-          message: 'Assim que a notificação aparecer por cima, clique nela ou vá nas "Configurações do App" para ligar a vibração que o Android liberou agora.', 
-          type: 'success' 
+          title: 'Permissão Negada', 
+          message: 'Para ativar os alertas, vá nas configurações do seu celular e permita notificações para este app.', 
+          type: 'error' 
         });
+        return;
       }
+
+      // Envia uma notificação de teste usando o módulo híbrido (Web ou APK)
+      await sendLocalNotification(
+        '🚀 Calibração de Sinais',
+        'Deu certo! Agora você vai receber os sinais do seu amor aqui. 🦦'
+      );
+
+      showModal({ 
+        title: 'Alertas Ativados! 🎉', 
+        message: 'Notificação de teste enviada com sucesso. Se você recebeu acima, está tudo certo!', 
+        type: 'success' 
+      });
     } catch (err) {
-      console.error(err);
-      showModal({ title: 'Erro', message: 'Não foi possível calibrar agora.', type: 'error' });
+      console.error('[Calibração]', err);
+      showModal({ title: 'Erro', message: 'Não foi possível ativar os alertas agora. Tente novamente.', type: 'error' });
     }
   };
 
@@ -789,8 +785,18 @@ function App() {
 
   const handlePairBiometrics = async () => {
     try {
-      if (!window.isSecureContext || !window.PublicKeyCredential) {
-        showModal({ title: 'Indisponível', message: "A biometria requer uma conexão segura (HTTPS).", type: 'error' });
+      // No APK (Capacitor), o contexto é sempre seguro mesmo sem HTTPS externo
+      const isCapacitorNative = isNativePlatform();
+      const isSecure = window.isSecureContext || isCapacitorNative;
+      
+      if (!isSecure || !window.PublicKeyCredential) {
+        showModal({ 
+          title: 'Disponível no App Instalado', 
+          message: isCapacitorNative 
+            ? 'Seu dispositivo não suporta biometria via WebAuthn.' 
+            : 'A biometria requer o app instalado (APK) ou o site em HTTPS (produção).', 
+          type: 'info' 
+        });
         return;
       }
 
