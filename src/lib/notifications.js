@@ -1,160 +1,161 @@
-// Notification Handler - Nossos Sinais (V20.4 - Android Fix)
+/**
+ * NOSSASINAIS - Módulo de Notificações Nativas
+ * =============================================
+ * "Camaleão": Detecta automaticamente se está rodando como APK ou Web
+ * e usa a tecnologia certa para cada plataforma.
+ *
+ * - WEB/PWA: usa o Service Worker + Web Push API (o que já tínhamos)
+ * - APK/NATIVO: usa o @capacitor/local-notifications (acesso direto ao Android)
+ */
 
-export const requestNotificationPermission = async () => {
-  if (!('Notification' in window)) return 'unsupported';
-  if (Notification.permission === 'granted') return 'granted';
-  if (Notification.permission === 'denied') return 'denied';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
-  try {
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      // Teste imediato para confirmar que funciona
-      await sendLocalNotification('Nossos Sinais 🦦', 'Notificações ativadas! Você não vai perder nenhum sinal.');
-    }
-    return permission;
-  } catch (err) {
-    console.error('Erro ao solicitar permissão:', err);
-    return 'denied';
-  }
-};
+// Chave pública VAPID para Web Push
+export const VAPID_PUBLIC_KEY = 'BBTNWQcJCboY1aCKaVFi1CObff-1VyGQaYLy5umIleop4OVb31Tx8Krw4iYJmvfcKnY0PAiTwIEOLX6jjnBpPN0';
 
 /**
- * Envia notificação de sistema via Service Worker.
- * No Android PWA, SEMPRE usa SW (não new Notification()).
- * Usa navigator.serviceWorker.ready (aguarda o SW ficar ativo).
+ * Verifica se está rodando como APK nativo (Android/iOS)
  */
-export const sendLocalNotification = async (title, body) => {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+export const isNativePlatform = () => Capacitor.isNativePlatform();
 
-  // Estratégia 1: Service Worker Ready (principal — funciona no Android PWA)
-  if ('serviceWorker' in navigator) {
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      if (registration && registration.showNotification) {
-        await registration.showNotification(title, {
+/**
+ * Envia uma notificação remota via Supabase Edge Function
+ * (Utilizada para notificar o PARCEIRO, funciona no Web e no APK)
+ */
+export async function sendRemoteNotification(supabase, recipientId, senderId, title, body, type = 'signal') {
+  try {
+    const { error } = await supabase.functions.invoke('send-push', {
+      body: { 
+        record: { 
+          user_id: recipientId, 
+          sender_id: senderId,
+          title, 
           body,
-          icon: '/nosso_mascote_final.png',
-          badge: '/nosso_mascote_final.png',
-          vibrate: [200, 100, 200],
-          tag: 'nossos-sinais-update',
-          renotify: true,
-          requireInteraction: false,
-        });
-        playSoftSound();
-        return;
+          type
+        } 
       }
-    } catch (err) {
-      console.warn('SW notification falhou, usando fallback:', err);
-    }
-  }
-
-  // Estratégia 2: Fallback desktop
-  try {
-    new Notification(title, {
-      body,
-      icon: '/nosso_mascote_final.png',
-      silent: true,
     });
-    playSoftSound();
+    if (error) console.error('[Push Remoto] Erro ao chamar Edge Function:', error);
+    else console.log('[Push Remoto] Notificação enviada ao parceiro com sucesso.');
   } catch (err) {
-    console.warn('Notificação fallback falhou:', err);
+    console.error('[Push Remoto] Erro inesperado:', err);
   }
-};
-
-/**
- * Envia uma notificação para OUTRO usuário salvando no banco de dados.
- * O destinatário receberá isso via Realtime no App.jsx.
- */
-export const sendRemoteNotification = async (supabase, receiverId, senderId, title, body, type = 'nudge') => {
-  const { error } = await supabase.from('notifications').insert({
-    user_id: receiverId,
-    sender_id: senderId,
-    title,
-    body,
-    type
-  });
-  if (error) console.error('Erro ao enviar notificação remota:', error);
-  return !error;
-};
-
-// CHAVE PÚBLICA VAPID (IDENTIDADE REAL - EXTRAÍDA MATEMATICAMENTE)
-const VAPID_PUBLIC_KEY = 'BBTNWQcJCboY1aCKaVFi1CObff-1VyGQaYLy5umIleop4OVb31Tx8Krw4iYJmvfcKnY0PAiTwIEOLX6jjnBpPN0';
-
-/**
- * Converte a chave VAPID Base64 para Uint8Array.
- */
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
 }
 
 /**
- * Inscreve o navegador/celular no serviço de PUSH do sistema operacional.
+ * Solicita permissão de notificação - Web ou Nativo
  */
-export const subscribeToPushNotifications = async (userId, supabase) => {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    console.warn('Push Notifications não são suportadas neste navegador.');
+export async function requestNotificationPermission() {
+  if (isNativePlatform()) {
+    // Modo APK: usar a API nativa do Android
+    const result = await LocalNotifications.requestPermissions();
+    console.log('[Nativo] Permissão de notificação:', result.display);
+    return result.display === 'granted' ? 'granted' : 'denied';
+  } else {
+    // Modo Web/PWA: usar a Web Notifications API
+    const permission = await Notification.requestPermission();
+    console.log('[Web] Permissão de notificação:', permission);
+    return permission;
+  }
+}
+
+/**
+ * Envia uma notificação local imediata - Web ou Nativo
+ * Esta é a função "Camaleão" principal do sistema
+ */
+export async function sendLocalNotification(title, body, options = {}) {
+  if (isNativePlatform()) {
+    // Modo APK: Notificação completamente nativa com vibração garantida
+    try {
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            title: title,
+            body: body,
+            id: Math.floor(Math.random() * 100000),
+            sound: options.sound || null,
+            attachments: null,
+            actionTypeId: '',
+            extra: options.data || null,
+            // No Android nativo, a vibração SEMPRE funciona
+          }
+        ]
+      });
+      console.log('[Nativo] Notificação local enviada com sucesso.');
+    } catch (err) {
+      console.error('[Nativo] Erro ao enviar notificação:', err);
+    }
+  } else {
+    // Modo Web/PWA: usar o Service Worker
+    if ('serviceWorker' in navigator && Notification.permission === 'granted') {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        await registration.showNotification(title, {
+          body: body,
+          icon: '/nosso_mascote_final.png',
+          badge: '/nosso_mascote_final.png',
+          vibrate: [500, 100, 500],
+          tag: 'sinais-alerta-v34',
+          renotify: true,
+          requireInteraction: true,
+          ...options
+        });
+        console.log('[Web] Notificação via Service Worker enviada.');
+      } catch (err) {
+        console.error('[Web] Erro no Service Worker:', err);
+      }
+    }
+  }
+}
+
+/**
+ * Registra listener de toque na notificação nativa
+ * Quando o usuário toca no alerta, o App abre
+ */
+export function setupNativeNotificationListeners(onNotificationClicked) {
+  if (!isNativePlatform()) return;
+
+  LocalNotifications.addListener('localNotificationActionPerformed', (notification) => {
+    console.log('[Nativo] Notificação clicada:', notification);
+    if (onNotificationClicked) onNotificationClicked(notification);
+  });
+}
+
+/**
+ * Subscrição Push Web (só aplicável no modo Web/PWA)
+ */
+export async function subscribeToPushNotifications(userId, supabase) {
+  if (isNativePlatform()) {
+    console.log('[Nativo] No APK, as notificações são locais. Push Web não necessário.');
     return;
   }
 
   try {
-    const registration = await navigator.serviceWorker.ready;
-    
-    // 1. Tentar obter subscrição existente
-    let subscription = await registration.pushManager.getSubscription();
-    
-    // 2. Se não existir, criar uma nova
-    if (!subscription) {
-      console.log('Iniciando processo de inscrição de Push...');
-      try {
-        const convertedKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: convertedKey
-        });
-        alert('✅ Conectado com Sucesso! Seu celular agora está pronto para receber avisos em segundo plano.');
-      } catch (subErr) {
-        console.error('Falha na inscrição PWA:', subErr);
-        // Mostrar o erro detalhado para debugar
-        alert('❌ Erro na inscrição: ' + subErr.name + ' - ' + subErr.message);
-        return;
-      }
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.warn('[Web] Push não suportado neste navegador.');
+      return;
     }
 
-    // 3. Salvar no Supabase no perfil do usuário
+    const registration = await navigator.serviceWorker.ready;
+
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: VAPID_PUBLIC_KEY
+      });
+    }
+
     const { error } = await supabase
       .from('profiles')
-      .update({ push_subscription: subscription.toJSON() })
+      .update({ push_subscription: subscription })
       .eq('id', userId);
 
-    if (error) throw error;
-    console.log('Subscrição de Push salva no Supabase!');
-    
-  } catch (err) {
-    console.error('Erro crítico ao inscrever para Push:', err);
-    alert('⚠️ Falha crítica: ' + err.message);
-  }
-};
+    if (error) console.error('[Web] Erro ao salvar subscription no Supabase:', error);
+    else console.log('[Web] Push subscription salva no Supabase com sucesso!');
 
-const playSoftSound = () => {
-  try {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(523, audioCtx.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(784, audioCtx.currentTime + 0.3);
-    gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
-    oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    oscillator.start();
-    oscillator.stop(audioCtx.currentTime + 0.4);
-  } catch (e) { /* silencioso */ }
-};
+  } catch (err) {
+    console.error('[Web] Erro ao subscrever push:', err);
+  }
+}

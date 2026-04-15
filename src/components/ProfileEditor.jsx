@@ -15,6 +15,7 @@ export function ProfileEditor({
   onRestoreSignals,
   onDeleteAccount,
   onPairBiometrics,
+  onCalibrateNotifications,
   showModal
 }) {
   const [formData, setFormData] = useState({

@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabaseClient';
-import { requestNotificationPermission, sendLocalNotification, subscribeToPushNotifications } from './lib/notifications';
+import { 
+  requestNotificationPermission, 
+  sendLocalNotification, 
+  subscribeToPushNotifications,
+  setupNativeNotificationListeners,
+  isNativePlatform
+} from './lib/notifications';
 import { SignalGrid } from './components/SignalGrid';
 import { ChatRoom } from './components/ChatRoom';
 import { ProfileEditor } from './components/ProfileEditor';
@@ -86,42 +92,54 @@ function App() {
   const [needRefresh, setNeedRefresh] = useState(false);
   const swRegistrationRef = useRef(null);
 
-  // Lógica Manual de Detecção de Versão PWA
+  // Lógica de inicialização: detecta plataforma e registra o motor certo
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      console.log('SW: Iniciando registro...');
-      navigator.serviceWorker.register('/sw.js').then(reg => {
-        console.log('SW: Registrado com sucesso!', reg.scope);
-        swRegistrationRef.current = reg;
-        
-        if (reg.waiting) {
-          console.log('SW: Há uma nova versão esperando.');
-          setNeedRefresh(true);
-        }
-
-        reg.addEventListener('updatefound', () => {
-          console.log('SW: Nova versão encontrada instalando...');
-          const newWorker = reg.installing;
-          if (newWorker) {
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('SW: Nova versão pronta para assumir.');
-                setNeedRefresh(true);
-              }
-            });
+    if (isNativePlatform()) {
+      // === MODO APK NATIVO ===
+      console.log('[Plataforma] Rodando como APK Nativo (Android/iOS)');
+      // Listener para quando o usuário toca na notificação e abre o app
+      setupNativeNotificationListeners((notification) => {
+        console.log('[APK] Notificação clicada, sincronizando...');
+        setRefreshCounter(prev => prev + 1);
+      });
+    } else {
+      // === MODO WEB/PWA ===
+      console.log('[Plataforma] Rodando no Navegador (Web/PWA)');
+      if ('serviceWorker' in navigator) {
+        console.log('SW: Iniciando registro...');
+        navigator.serviceWorker.register('/sw.js').then(reg => {
+          console.log('SW: Registrado com sucesso!', reg.scope);
+          swRegistrationRef.current = reg;
+          
+          if (reg.waiting) {
+            console.log('SW: Há uma nova versão esperando.');
+            setNeedRefresh(true);
           }
-        });
-      }).catch(err => {
-        console.error('SW: Erro ao registrar:', err);
-      });
 
-      let isRefreshing = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (isRefreshing) return;
-        isRefreshing = true;
-        console.log('SW: Controlador mudou. Recarregando...');
-        window.location.reload();
-      });
+          reg.addEventListener('updatefound', () => {
+            console.log('SW: Nova versão encontrada instalando...');
+            const newWorker = reg.installing;
+            if (newWorker) {
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  console.log('SW: Nova versão pronta para assumir.');
+                  setNeedRefresh(true);
+                }
+              });
+            }
+          });
+        }).catch(err => {
+          console.error('SW: Erro ao registrar:', err);
+        });
+
+        let isRefreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (isRefreshing) return;
+          isRefreshing = true;
+          console.log('SW: Controlador mudou. Recarregando...');
+          window.location.reload();
+        });
+      }
     }
   }, []);
 
@@ -187,6 +205,7 @@ function App() {
     });
 
     // A permissão agora é solicitada via GESTO DO USUÁRIO no login/cadastro/setup
+    // No APK, as permissões são solicitadas pelo Capacitor automaticamente
 
     return () => subscription.unsubscribe();
   }, [currentUser?.id]);
