@@ -15,9 +15,12 @@ export function AuthScreen({ onAuthSuccess, showModal }) {
     setError(null);
 
     try {
-      // PEDIDO DE GESTO: Solicitar permissão de notificação no momento do clique
-      const permission = await Notification.requestPermission();
-      console.log('Auth: Permissão de notificação solicitada via clique:', permission);
+      // Solicitar permissão de notificação APENAS na Web.
+      // No APK nativo (Capacitor), a API Notification não existe e o Capacitor gerencia isso separado.
+      if (typeof Notification !== 'undefined' && typeof Notification.requestPermission === 'function') {
+        const permission = await Notification.requestPermission();
+        console.log('[Web] Permissão de notificação solicitada:', permission);
+      }
 
       if (isLogin) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -38,6 +41,7 @@ export function AuthScreen({ onAuthSuccess, showModal }) {
         setIsLogin(true);
       }
     } catch (err) {
+      console.error('[Auth] Erro:', err.message);
       if (isLogin) {
         setError("E-mail ou senha incorretos. Verifique os dados ou crie uma nova conta.");
       } else {

@@ -37,5 +37,12 @@
 
     <!-- Permissions -->
 
+    <!-- Internet: acesso ao Supabase -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Notificações: Android 13+ requer permissão explícita -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Vibração: necessária para alertas de sinais -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Receber alarmes exatos: para notificações no fundo -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 </manifest>
