@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { LogIn, UserPlus, Mail, Lock, AlertCircle } from 'lucide-react';
+import { DownloadBanner } from './DownloadBanner';
 
 export function AuthScreen({ onAuthSuccess, showModal }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -88,6 +89,7 @@ export function AuthScreen({ onAuthSuccess, showModal }) {
 
   return (
     <div className="auth-screen">
+      <DownloadBanner />
       <div className="auth-card">
         <div className="auth-header">
           <h2>{isLogin ? 'Bem-vindo de volta' : 'Criar nossa conta'}</h2>

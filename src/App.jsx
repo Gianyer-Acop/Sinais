@@ -20,6 +20,7 @@ import { LoadingScreen } from './components/LoadingScreen';
 import { WelcomeTour } from './components/WelcomeTour';
 import { CustomModal } from './components/CustomModal';
 import { SignalManager } from './components/SignalManager';
+import { DownloadBanner } from './components/DownloadBanner';
 import { User, MessageSquare, Settings, Zap, Heart, LogOut, Lock } from 'lucide-react';
 import './App.css';
 
@@ -788,12 +789,15 @@ function App() {
       // No APK (Capacitor), o contexto é sempre seguro mesmo sem HTTPS externo
       const isCapacitorNative = isNativePlatform();
       const isSecure = window.isSecureContext || isCapacitorNative;
+      const canUseWebAuthn = !!window.PublicKeyCredential;
       
-      if (!isSecure || !window.PublicKeyCredential) {
+      console.log('[Biometria] Debug:', { isCapacitorNative, isSecure, canUseWebAuthn });
+
+      if (!isSecure || !canUseWebAuthn) {
         showModal({ 
-          title: 'Disponível no App Instalado', 
+          title: 'Configuração Necessária', 
           message: isCapacitorNative 
-            ? 'Seu dispositivo não suporta biometria via WebAuthn.' 
+            ? 'A biometria não está disponível neste dispositivo. Verifique se você tem uma digital cadastrada no Android.' 
             : 'A biometria requer o app instalado (APK) ou o site em HTTPS (produção).', 
           type: 'info' 
         });
@@ -898,6 +902,7 @@ function App() {
 
   return (
     <div className={`app-container ${fadingOut ? 'fade-out-active' : ''}`}>
+      <DownloadBanner />
       {fadingOut && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#fff', animation: 'fadeInApp 0.8s ease-in-out forwards' }}>
            <LoadingScreen message="Sincronizando despedida... ❤️" />

@@ -48,16 +48,14 @@ export function ProfileEditor({
 
   const handleRequestPermission = async () => {
     try {
-      const permission = await Notification.requestPermission();
+      const permission = await requestNotificationPermission();
       if (permission === 'granted') {
-        showModal({ title: 'Notificações Ativas!', message: "Ótimo! Notificações ativadas com sucesso. 🎉", type: 'success' });
-      } else if (permission === 'denied') {
-        showModal({ title: 'Bloqueado', message: "As notificações foram bloqueadas. Você precisará permitir nas configurações do seu navegador.", type: 'error' });
+        showModal({ title: 'Notificações Ativas!', message: "Ótimo! Alertas configurados com sucesso. 🎉", type: 'success' });
       } else {
-        showModal({ title: 'Atenção', message: "Não foi possível ativar as notificações neste dispositivo.", type: 'info' });
+        showModal({ title: 'Atenção', message: "Não foi possível ativar as notificações neste dispositivo. Verifique as configurações do sistema.", type: 'info' });
       }
     } catch (err) {
-      console.error(err);
+      console.error('[Permissão]', err);
       showModal({ title: 'Ops!', message: "Erro ao tentar ativar notificações.", type: 'error' });
     }
   };

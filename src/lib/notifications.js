@@ -14,7 +14,11 @@ import { Capacitor } from '@capacitor/core';
 export const VAPID_PUBLIC_KEY = 'BBTNWQcJCboY1aCKaVFi1CObff-1VyGQaYLy5umIleop4OVb31Tx8Krw4iYJmvfcKnY0PAiTwIEOLX6jjnBpPN0';
 
 /** Verifica se está rodando como APK nativo */
-export const isNativePlatform = () => Capacitor.isNativePlatform();
+export const isNativePlatform = () => {
+  const result = Capacitor.isNativePlatform();
+  console.log('[Plataforma] É nativa?', result);
+  return result;
+};
 
 /**
  * Envia notificação remota ao parceiro via Supabase Edge Function
