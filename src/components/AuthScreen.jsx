@@ -14,19 +14,22 @@ export function AuthScreen({ onAuthSuccess, showModal }) {
     setLoading(true);
     setError(null);
 
+    console.log('[Auth] Iniciando:', isLogin ? 'Login' : 'Cadastro', '| Email:', email);
+
     try {
-      // Solicitar permissão de notificação APENAS na Web.
-      // No APK nativo (Capacitor), a API Notification não existe e o Capacitor gerencia isso separado.
+      // Solicitar permissão de notificação APENAS na Web
       if (typeof Notification !== 'undefined' && typeof Notification.requestPermission === 'function') {
-        const permission = await Notification.requestPermission();
-        console.log('[Web] Permissão de notificação solicitada:', permission);
+        await Notification.requestPermission().catch(() => {}); // Silencia se falhar
       }
 
       if (isLogin) {
+        console.log('[Auth] Chamando signInWithPassword...');
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        console.log('[Auth] Resposta login:', { data, error });
         if (error) throw error;
         onAuthSuccess(data.user);
       } else {
+        console.log('[Auth] Chamando signUp...');
         const { data, error } = await supabase.auth.signUp({ 
           email, 
           password,
@@ -36,17 +39,40 @@ export function AuthScreen({ onAuthSuccess, showModal }) {
             }
           }
         });
+        console.log('[Auth] Resposta cadastro:', { data, error });
         if (error) throw error;
-        showModal({ title: 'Bem-vind@!', message: "Cadastro realizado com sucesso! ✨ Agora você pode entrar com seu e-mail e senha.", type: 'success' });
-        setIsLogin(true);
+        
+        // E-mail já cadastrado mas sem identities (Supabase retorna user "fantasma")
+        if (data.user && data.user.identities && data.user.identities.length === 0) {
+          throw new Error('Este e-mail já está cadastrado. Tente fazer login.');
+        }
+
+        // ✅ Se confirmação de e-mail está desativada, a sessão já vem pronta → login automático!
+        if (data.session) {
+          console.log('[Auth] Sessão criada imediatamente → login automático.');
+          onAuthSuccess(data.user);
+        } else {
+          // Confirmação de e-mail está ativa → pedir para verificar caixa de entrada
+          showModal({ 
+            title: 'Quase lá! 📧', 
+            message: 'Cadastro realizado! Verifique seu e-mail para confirmar a conta e depois faça login.', 
+            type: 'success' 
+          });
+          setIsLogin(true);
+        }
       }
     } catch (err) {
-      console.error('[Auth] Erro:', err.message);
-      if (isLogin) {
-        setError("E-mail ou senha incorretos. Verifique os dados ou crie uma nova conta.");
-      } else {
-        showModal({ title: 'Erro de Cadastro', message: err.message, type: 'error' });
-      }
+      console.error('[Auth] ERRO CAPTURADO:', err.message, err);
+      
+      // Traduzir erros do Supabase para português
+      let mensagem = err.message;
+      if (mensagem.includes('Invalid login credentials')) mensagem = 'E-mail ou senha incorretos.';
+      if (mensagem.includes('Email not confirmed')) mensagem = 'E-mail ainda não confirmado. Verifique sua caixa de entrada ou peça para o administrador desativar a confirmação.';
+      if (mensagem.includes('User already registered')) mensagem = 'Este e-mail já está cadastrado. Tente fazer login.';
+      if (mensagem.includes('Password should be')) mensagem = 'A senha deve ter pelo menos 6 caracteres.';
+      if (mensagem.includes('network') || mensagem.includes('fetch')) mensagem = 'Sem conexão com o servidor. Verifique sua internet.';
+      
+      setError(mensagem);
     } finally {
       setLoading(false);
     }
